@@ -40,10 +40,14 @@ class MLP_dir(MLP):
         super(MLP_dir, self).__init__(2*k+1,1,p,q)
         self.k,self.p,self.q=k,p,q
         self.loss_function = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        self.train_losses = []
+        self.val_losses = []
+        self.epochs = 0
         
     def fit(self,epochs,y_train,u_train,y_val,u_val):
         
+
         # define the scalers
         self.y_scaler = MinMaxScaler(y_train)
         self.u_scaler = MinMaxScaler(u_train)
@@ -51,6 +55,7 @@ class MLP_dir(MLP):
 
         input_train, output_train = self.preprocess(y_train,u_train)
         input_val, output_val = self.preprocess(y_val,u_val)
+
 
         for epoch in range(epochs):
             # Training Phase
@@ -67,12 +72,15 @@ class MLP_dir(MLP):
             val_loss  = 0
             with torch.no_grad():
                 for input, output_true in zip(input_val,output_val):
-                    val_outputs = model(input)
+                    val_outputs = self(input)
                     val_loss += self.loss_function(val_outputs, output_true).item()
             val_loss /= input_val.shape[0]
-
+            
+            self.epochs += 1
+            self.train_losses.append(loss.item())
+            self.val_losses.append(val_loss)
             print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
-            # save_eval_plot(self,y_val,u_val, f"{epoch:04d}.png")
+
 
     def predict(self,y0,u):
         
@@ -119,45 +127,53 @@ class MLP_dir(MLP):
 
         return input, output
 
+    def evaluate(self,y_test,u_test):
+        y_pred = self.predict(y_test[:,:self.k,0],u_test[:,:,0])
+        y_true = y_test.squeeze()
+        return ((self.y_scaler.transform(y_true) - self.y_scaler.transform(y_pred))**2).mean()
 
+    def save_eval_plot(self,y_test,u_test,path):
+        y_pred = self.predict(y_test[:,:self.k,0],u_test[:,:,0])
+        y_true = y_test.squeeze()
 
-def save_eval_plot(model:MLP_dir,y_test,u_test,path):
-    y_pred = model.predict(y_test[:,:k,0],u_test[:,:,0])
-    y_true = y_test.squeeze()
-
-    fig, axes = plt.subplots(6,5,figsize=(12,12),sharex=True,sharey=True)
-    
-    for i,ax in enumerate(axes.flatten()):
-        error = ((model.y_scaler.transform(y_true[i]) - model.y_scaler.transform(y_pred[i]))**2).mean()
-        ax.plot(y_true[i]/1e6,color='black',lw=3)
-        ax.plot(y_pred[i].detach().numpy()/1e6,color='red',lw=2,ls='--')
-        ax.set_title(f'MSE = {error}',fontsize=8)
+        fig, axes = plt.subplots(6,5,figsize=(12,12),sharex=True,sharey=True)
         
+        for i,ax in enumerate(axes.flatten()):
+            error = ((self.y_scaler.transform(y_true[i]) - self.y_scaler.transform(y_pred[i]))**2).mean()
+            ax.plot(y_true[i]/1e6,color='black',lw=3)
+            ax.plot(y_pred[i].detach().numpy()/1e6,color='red',lw=2,ls='--')
+            ax.set_title(f'MSE = {error}',fontsize=8)
+            
 
-    error = ((model.y_scaler.transform(y_true) - model.y_scaler.transform(y_pred))**2).mean()
-    plt.suptitle(f'MSE = {error}', fontsize=16)
-    plt.tight_layout()
-    plt.savefig(path)
-    plt.close()
+        error = ((self.y_scaler.transform(y_true) - self.y_scaler.transform(y_pred))**2).mean()
+        
+        plt.suptitle(f'MSE = {error}', fontsize=16)
+        plt.tight_layout()
+        plt.savefig(path)
+        plt.close()
+
+    def save_model(self, path):
+        torch.save({
+            'model_state_dict': self.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'y_scaler': {
+                'x_min': self.y_scaler.x_min,
+                'x_max': self.y_scaler.x_max
+            } if self.y_scaler else None,
+            'u_scaler': {
+                'x_min': self.u_scaler.x_min,
+                'x_max': self.u_scaler.x_max
+            } if self.u_scaler else None,
+            'k': self.k,
+            'p': self.p,
+            'q': self.q,
+            'train_losses': self.train_losses,
+            'val_losses': self.val_losses,
+            'epochs': self.epochs,
+        }, path)
+        print(f'Model saved to {path}!')
 
 
-def save_model(model:MLP_dir, path):
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': model.optimizer.state_dict(),
-        'y_scaler': {
-            'x_min': model.y_scaler.x_min,
-            'x_max': model.y_scaler.x_max
-        } if model.y_scaler else None,
-        'u_scaler': {
-            'x_min': model.u_scaler.x_min,
-            'x_max': model.u_scaler.x_max
-        } if model.u_scaler else None,
-        'k': model.k,
-        'p': model.p,
-        'q': model.q
-    }, path)
-    print(f'Model saved to {path}!')
 
 def load_model(path):
     checkpoint = torch.load(path)
@@ -177,16 +193,20 @@ def load_model(path):
         model.u_scaler.x_max = checkpoint['u_scaler']['x_max']
     else:
         model.u_scaler = None
+    model.train_losses = checkpoint['train_losses'] if 'train_losses' in checkpoint else []
+    model.val_losses = checkpoint['val_losses'] if 'val_losses' in checkpoint else []
+    model.epochs = checkpoint['epochs'] if 'epochs' in checkpoint else 0
     return model
+
 
 if __name__ == '__main__':
     
-    k,p,q = 3,8,3
-    epochs = 100
+    k,p,q = 2,8,2
+    epochs = 150
     
     for name in materials.keys():
     
-        data_path = osp.join("data",name)
+        data_path = osp.join("data","data-sets",name)
 
         y_list = torch.tensor(np.load(osp.join(data_path,'y_list.npy')),dtype=torch.float32).unsqueeze(-1)
         u_list = torch.tensor(np.load(osp.join(data_path,'u_list.npy')),dtype=torch.float32).unsqueeze(-1)
@@ -198,16 +218,15 @@ if __name__ == '__main__':
         model.fit(epochs,y_train,u_train,y_val,u_val)
         
         # SAVE
-        model_path = osp.join('pytorch','models',name)
+        model_path = osp.join('metrics','models',f'MLP_dir_{k}-{p}-{q}',name)
         if not osp.exists(model_path): 
             os.makedirs(model_path)
         
-        save_eval_plot(
-            model,
+        model.save_eval_plot(
             y_test,u_test,
             path=osp.join(model_path,f'{epochs}.png')
         )
-        save_model(model, osp.join(model_path,f'{epochs}.pth'))
+        model.save_model(osp.join(model_path,f'{epochs}.pth'))
     
 
     # video_from_folder('frames',fps=15)

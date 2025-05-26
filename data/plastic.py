@@ -4,17 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Linear elastic
-E = 1e4
+E = 2e9
 
 # Linear plastic
-H_iso = 400
-H_kin = 400
+H_iso = 750e6
+H_kin = 400e6
 
 # Swift
-a = 100
-n = 0.1
-eps0 = 5e-4
-Y0 = a*eps0**n
+a = 200e6
+n = 0.2
+eps0 = 0.0003
+Y0 = a*eps0**n * 1.5
 
 # Armstrong-Frederick
 b = 10
@@ -93,3 +93,20 @@ def HARDENING(eps,E,dalpha_F,Y_F):
         sig[i+1] = sig_trial - E*deps_p
     
     return sig, alpha, Y
+
+
+if __name__ == '__main__':
+    plt.figure(figsize=(5,5),dpi=150)
+
+    u_max = 0.2
+    u_min = -u_max
+
+    eps = np.concatenate([np.linspace(0,u_max,1000),np.linspace(u_max,u_min,1000),np.linspace(u_min,0,1000)])
+    for name in materials.keys():
+        mat = materials[name]
+        sig, alpha, Y = HARDENING(eps,mat['E'],mat['dalpha'],mat['Y'])
+        plt.plot(eps,sig/1e6,label=name,color=materials[name]['color'])
+    plt.legend(loc='upper right',fontsize=5)
+    plt.grid(ls='--',c='lightgray')
+    plt.tight_layout()
+    plt.savefig('output.png')
