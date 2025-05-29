@@ -4,10 +4,35 @@ import os.path as osp
 import torch
 import torch.nn as nn
 import numpy as np
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-from data.plastic import materials
-from MLP_dir import MinMaxScaler, MLP
+from sklearn.model_selection import train_test_split
+
+class MLP(nn.Module):
+    def __init__(self,input_size,output_size,p,q):
+        super(MLP, self).__init__()
+        
+        self.hidden_layers = nn.ModuleList([nn.Linear(input_size, p)])
+        for _ in range(q - 2):
+            self.hidden_layers.append(nn.Linear(p, p))
+        self.hidden_layers.append(nn.Linear(p, output_size))
+        self.ReLU = nn.ReLU()
+
+    def forward(self, x):
+        for layer in self.hidden_layers[:-1]:
+            x = self.ReLU(layer(x))
+        return self.hidden_layers[-1](x)
+
+
+class MinMaxScaler:
+    def __init__(self,x):
+        self.x_max, self.x_min = x.max(), x.min()
+
+    def transform(self,x):
+        return 2*(x - self.x_min)/(self.x_max - self.x_min) - 1
+    
+    def inverse_transform(self,x):
+        return (x+1) * (self.x_max - self.x_min)/2 + self.x_min
+
 
 class MLP_incr(MLP):
     def __init__(self,k,p,q):
@@ -19,7 +44,7 @@ class MLP_incr(MLP):
         self.train_losses = []
         self.val_losses = []
 
-    def fit(self,epochs,y_train,u_train,y_val,u_val):
+    def fit(self,epochs,y_train,u_train,y_val,u_val, early_stopping=False, patience=10, min_delta=0.0, verbose=True):
         dy_train = torch.tensor([[y[i]-y[i-1] for i in range(1,y.shape[0])]for y in y_train],dtype=torch.float32).unsqueeze(-1)
         dy_val   = torch.tensor([[y[i]-y[i-1] for i in range(1,y.shape[0])]for y in y_val],dtype=torch.float32).unsqueeze(-1)
 
@@ -31,6 +56,9 @@ class MLP_incr(MLP):
         input_train, output_train = self.preprocess(dy_train,y_train,u_train)
         input_val, output_val = self.preprocess(dy_val, y_val,u_val)
 
+        # For early stopping
+        best_val_loss = float('inf')
+        epochs_no_improve = 0
         for epoch in range(epochs):
             # Training Phase
             self.train()
@@ -53,8 +81,23 @@ class MLP_incr(MLP):
             self.epochs += 1
             self.train_losses.append(loss.item())
             self.val_losses.append(val_loss)
-            print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
-        
+
+            if verbose: print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
+
+            if early_stopping:
+                if val_loss < best_val_loss - min_delta:
+                    best_val_loss = val_loss
+                    epochs_no_improve = 0
+                    best_state = self.state_dict()  # Save best weights
+                else:
+                    epochs_no_improve += 1
+
+                if epochs_no_improve >= patience:
+                    print(f"Early stopping at epoch {epoch+1}")
+                    self.load_state_dict(best_state)  # Restore best weights
+                    break
+                    
+        print(f'Final: Loss: {loss.item()}, Val Loss: {val_loss}')
     
     def preprocess(self,dy, y,u):
 
@@ -79,7 +122,7 @@ class MLP_incr(MLP):
         y_next = y_next.unsqueeze(-1)
 
         input = torch.cat([y_prev,u_prev,u_next],axis=-1)
-        output = dy[:,k-1:,:]
+        output = dy[:,self.k-1:,:]
 
         return input, output
 
@@ -185,7 +228,6 @@ def load_model(path):
     model.epochs = checkpoint['epochs'] if 'epochs' in checkpoint else 0
     return model
 
-
 if __name__ == '__main__':
     k,p,q = 7,8,3
     epochs = 150
@@ -210,4 +252,3 @@ if __name__ == '__main__':
             path=osp.join(model_path,f'{epochs}.png')
         )
         model.save_model(osp.join(model_path,f'{epochs}.pth'))
-
