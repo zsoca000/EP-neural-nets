@@ -1,4 +1,3 @@
-import sys
 import os
 import os.path as osp
 import torch
@@ -7,32 +6,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from data.plastic import materials
-
-class MLP(nn.Module):
-    def __init__(self,input_size,output_size,p,q):
-        super(MLP, self).__init__()
-        
-        self.hidden_layers = nn.ModuleList([nn.Linear(input_size, p)])
-        for _ in range(q - 2):
-            self.hidden_layers.append(nn.Linear(p, p))
-        self.hidden_layers.append(nn.Linear(p, output_size))
-        self.ReLU = nn.ReLU()
-
-    def forward(self, x):
-        for layer in self.hidden_layers[:-1]:
-            x = self.ReLU(layer(x))
-        return self.hidden_layers[-1](x)
-
-
-class MinMaxScaler:
-    def __init__(self,x):
-        self.x_max, self.x_min = x.max(), x.min()
-
-    def transform(self,x):
-        return 2*(x - self.x_min)/(self.x_max - self.x_min) - 1
-    
-    def inverse_transform(self,x):
-        return (x+1) * (self.x_max - self.x_min)/2 + self.x_min
+from commons import MLP, MinMaxScaler
 
 
 class MLP_dir(MLP):
@@ -45,9 +19,11 @@ class MLP_dir(MLP):
         self.val_losses = []
         self.epochs = 0
         
-    def fit(self,epochs,y_train,u_train,y_val,u_val):
+    def fit(
+        self,epochs,y_train,u_train,y_val,u_val, 
+        early_stopping=False, patience=10, min_delta=0.0, verbose=True
+    ):
         
-
         # define the scalers
         self.y_scaler = MinMaxScaler(y_train)
         self.u_scaler = MinMaxScaler(u_train)
@@ -80,7 +56,6 @@ class MLP_dir(MLP):
             self.train_losses.append(loss.item())
             self.val_losses.append(val_loss)
             print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
-
 
     def predict(self,y0,u):
         
@@ -172,7 +147,6 @@ class MLP_dir(MLP):
             'epochs': self.epochs,
         }, path)
         print(f'Model saved to {path}!')
-
 
 
 def load_model(path):
