@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import numpy as np
 
 class MLP(nn.Module):
     def __init__(self,input_size,output_size,p,q,seed=42):
@@ -26,11 +27,34 @@ class MLP(nn.Module):
 
 
 class MinMaxScaler:
-    def __init__(self,x):
-        self.x_max, self.x_min = x.max(), x.min()
+    def __init__(self, x=None):
+        if x is not None:
+            self.x_max, self.x_min = x.max(), x.min()
+        else:
+            self.x_max, self.x_min = None, None
 
-    def transform(self,x):
-        return 2*(x - self.x_min)/(self.x_max - self.x_min) - 1
+    def transform(self, x):
+        if isinstance(x, np.ndarray):
+            x_max = self.x_max.cpu().numpy() if torch.is_tensor(self.x_max) else self.x_max
+            x_min = self.x_min.cpu().numpy() if torch.is_tensor(self.x_min) else self.x_min
+        else:
+            x_max, x_min = self.x_max, self.x_min
+        return 2 * (x - x_min) / (x_max - x_min) - 1
+
+    def inverse_transform(self, x):
+        if isinstance(x, np.ndarray):
+            x_max = self.x_max.cpu().numpy() if torch.is_tensor(self.x_max) else self.x_max
+            x_min = self.x_min.cpu().numpy() if torch.is_tensor(self.x_min) else self.x_min
+        else:
+            x_max, x_min = self.x_max, self.x_min
+        return (x + 1) * (x_max - x_min) / 2 + x_min
     
-    def inverse_transform(self,x):
-        return (x+1) * (self.x_max - self.x_min)/2 + self.x_min
+    def state_dict(self):
+        return {
+            'x_max': self.x_max,
+            'x_min': self.x_min
+        }
+
+    def load_state_dict(self, state_dict):
+        self.x_max = state_dict['x_max']
+        self.x_min = state_dict['x_min']
