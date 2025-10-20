@@ -1,1 +1,6 @@
 literature
+data/input
+data/output
+__pycache__/
+*.py[codz]
+*$py.class

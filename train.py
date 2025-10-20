@@ -4,7 +4,7 @@ import os
 import os.path as osp
 from sklearn.model_selection import train_test_split
 import numpy as np
-from data.plastic import materials
+from data.materials import MATERIALS
 
 
 def copy_model(model_path):

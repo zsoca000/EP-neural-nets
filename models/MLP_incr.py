@@ -6,8 +6,9 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from commons import MLP, MinMaxScaler
+from models.commons import MLP, MinMaxScaler
 
+# TODO: He - init
 
 class MLP_incr(MLP):
     def __init__(self,k,p,q):
@@ -18,13 +19,21 @@ class MLP_incr(MLP):
         self.epochs = 0
         self.train_losses = []
         self.val_losses = []
+        # TODO: device
 
     def fit(
         self,epochs,y_train,u_train,y_val,u_val, 
-        early_stopping=False, patience=10, min_delta=0.0, verbose=True
+        early_stopping=False, patience=10, min_delta=0.0, 
+        verbose=True
     ):
-        dy_train = torch.tensor([[y[i]-y[i-1] for i in range(1,y.shape[0])]for y in y_train],dtype=torch.float32).unsqueeze(-1)
-        dy_val   = torch.tensor([[y[i]-y[i-1] for i in range(1,y.shape[0])]for y in y_val],dtype=torch.float32).unsqueeze(-1)
+        dy_train = torch.tensor(
+            [[y[i]-y[i-1] for i in range(1,y.shape[0])]for y in y_train],
+            dtype=torch.float32
+        ).unsqueeze(-1)
+        dy_val = torch.tensor(
+            [[y[i]-y[i-1] for i in range(1,y.shape[0])]for y in y_val],
+            dtype=torch.float32
+        ).unsqueeze(-1)
 
         # define the scalers
         self.y_scaler = MinMaxScaler(y_train)
@@ -60,7 +69,8 @@ class MLP_incr(MLP):
             self.train_losses.append(loss.item())
             self.val_losses.append(val_loss)
 
-            if verbose: print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
+            if verbose: 
+                print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
 
             if early_stopping:
                 if val_loss < best_val_loss - min_delta:
@@ -102,7 +112,7 @@ class MLP_incr(MLP):
         input = torch.cat([y_prev,u_prev,u_next],axis=-1)
         output = dy[:,self.k-1:,:]
 
-        return input, output
+        return input, output # TODO: to device
 
     def predict(self,y0,u):
         

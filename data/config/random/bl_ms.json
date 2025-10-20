@@ -1,0 +1,17 @@
+{
+    "general": {
+        "dt": 0.01,
+        "t_end": 1.5 
+    },
+    "baseline": {
+        "t_step": [0.2, 0.5],
+        "amplitude" : [-0.0075, 0.0072]
+    },
+    "multisine" : {
+        "n_freqs": [10,20],
+        "freq_min": 0.1,
+        "freq_max": 10,
+        "amplitude" : [0.0075, 0.0175],
+        "phase" : [0, 6.28]
+    }
+}

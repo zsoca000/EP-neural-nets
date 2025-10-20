@@ -1,64 +1,104 @@
 import os
-import os.path as osp
 import torch
 import torch.nn as nn
 import numpy as np
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-from data.plastic import materials
-from commons import MLP, MinMaxScaler
+from models.commons import MLP, MinMaxScaler
 
 
-class MLP_dir(MLP):
-    def __init__(self,k,p,q):
-        super(MLP_dir, self).__init__(2*k+1,1,p,q)
+class MLP_dir:
+    def __init__(self,k,p,q,seed=42,weight_decay=1e-2):
         self.k,self.p,self.q=k,p,q
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu')
+        self.seed = seed
+        self.model = MLP(2*k+1,1,p,q,seed=self.seed).to(self.device)
+        self.optimizer = torch.optim.AdamW(
+            self.model.parameters(), 
+            lr=1e-3,
+            weight_decay=weight_decay
+        )
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', 
+            factor=0.5, patience=7, 
+            min_lr=1e-6
+        )
         self.loss_function = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         self.train_losses = []
         self.val_losses = []
         self.epochs = 0
-        
+
     def fit(
-        self,epochs,y_train,u_train,y_val,u_val, 
-        early_stopping=False, patience=10, min_delta=0.0, verbose=True
+        self,epochs, # epoch
+        y_train,u_train,y_val,u_val, # data
+        early_stopping=False, patience=15, min_delta=0.0, # early stopping
+        shuffle=False,
+        verbose=True
     ):
         
         # define the scalers
         self.y_scaler = MinMaxScaler(y_train)
         self.u_scaler = MinMaxScaler(u_train)
 
+        input_train, output_train = self.preprocess(
+            y_train,u_train,shuffle=shuffle
+        )
+        input_val, output_val = self.preprocess(
+            y_val,u_val,shuffle=shuffle
+        )
 
-        input_train, output_train = self.preprocess(y_train,u_train)
-        input_val, output_val = self.preprocess(y_val,u_val)
-
-
+        # For early stopping
+        best_val_loss = float('inf')
+        epochs_no_improve = 0
         for epoch in range(epochs):
             # Training Phase
-            self.train()
+            self.model.train()
             for input, output_true in zip(input_train,output_train):
-                output_pred = self(input)
+                output_pred = self.model(input)
                 loss = self.loss_function(output_pred, output_true)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
             
             # Validation Phase
-            self.eval()
+            self.model.eval()
             val_loss  = 0
             with torch.no_grad():
                 for input, output_true in zip(input_val,output_val):
-                    val_outputs = self(input)
+                    val_outputs = self.model(input)
                     val_loss += self.loss_function(val_outputs, output_true).item()
             val_loss /= input_val.shape[0]
-            
+            self.scheduler.step(val_loss)
+
+            # Update training history
             self.epochs += 1
             self.train_losses.append(loss.item())
             self.val_losses.append(val_loss)
-            print(f'Epoch {epoch+1}/{epochs}, Loss: {loss.item()}, Val Loss: {val_loss}')
+
+            if verbose: 
+                print(
+                    f'Epoch {epoch+1}/{epochs},', 
+                    f'Loss: {loss.item()},',
+                    f'Val Loss: {val_loss},', 
+                    f'LR: {self.scheduler.get_last_lr()[0]}'
+                )
+            
+            if early_stopping:
+                if val_loss < best_val_loss - min_delta:
+                    best_val_loss = val_loss
+                    epochs_no_improve = 0
+                    best_state = self.model.state_dict()  # Save best weights
+                else:
+                    epochs_no_improve += 1
+
+                if epochs_no_improve >= patience:
+                    print(f"Early stopping at epoch {epoch+1}")
+                    self.model.load_state_dict(best_state)  # Restore best weights
+                    break
+
 
     def predict(self,y0,u):
-        
+        self.model.eval()
         # scale the incoming data
         y0 = self.y_scaler.transform(y0)
         u = self.u_scaler.transform(u)
@@ -70,13 +110,14 @@ class MLP_dir(MLP):
             u_next = u[:,i+self.k].unsqueeze(-1)
             y_prev = y_pred[:,i:i+self.k]
             input  = torch.cat([y_prev,u_prev,u_next],axis=-1)
-            y_next = self(input)
+            with torch.inference_mode():
+                y_next = self.model(input)
             y_pred = torch.cat([y_pred,y_next],axis=-1)
         
         # rescale the output
         return self.y_scaler.inverse_transform(y_pred)
 
-    def preprocess(self,y,u):
+    def preprocess(self,y,u,shuffle=False):
 
         assert y.shape[1] == u.shape[1]
 
@@ -99,8 +140,12 @@ class MLP_dir(MLP):
 
         input = torch.cat([y_prev,u_prev,u_next],axis=-1)
         output = y_next
-
-        return input, output
+        if shuffle:
+            torch.manual_seed(self.seed)
+            perm = torch.randperm(input.shape[0])
+            input, output = input[perm], output[perm]
+        
+        return input.to(self.device), output.to(self.device)
 
     def evaluate(self,y_test,u_test):
         y_pred = self.predict(y_test[:,:self.k,0],u_test[:,:,0])
@@ -127,10 +172,11 @@ class MLP_dir(MLP):
         plt.savefig(path)
         plt.close()
 
-    def save_model(self, path):
+    def save(self, path):
         torch.save({
-            'model_state_dict': self.state_dict(),
+            'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
             'y_scaler': {
                 'x_min': self.y_scaler.x_min,
                 'x_max': self.y_scaler.x_max
@@ -152,7 +198,7 @@ class MLP_dir(MLP):
 def load_model(path):
     checkpoint = torch.load(path)
     model = MLP_dir(checkpoint['k'], checkpoint['p'], checkpoint['q'])
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.model.load_state_dict(checkpoint['model_state_dict'])
     model.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     # Reconstruct scalers
     if checkpoint['y_scaler'] is not None:
@@ -172,38 +218,7 @@ def load_model(path):
     model.epochs = checkpoint['epochs'] if 'epochs' in checkpoint else 0
     return model
 
-
-if __name__ == '__main__':
     
-    k,p,q = 2,8,2
-    epochs = 150
-    
-    for name in materials.keys():
-    
-        data_path = osp.join("data","data-sets",name)
-
-        y_list = torch.tensor(np.load(osp.join(data_path,'y_list.npy')),dtype=torch.float32).unsqueeze(-1)
-        u_list = torch.tensor(np.load(osp.join(data_path,'u_list.npy')),dtype=torch.float32).unsqueeze(-1)
-
-        y_train, y_tmp, u_train, u_tmp = train_test_split(y_list, u_list, test_size=0.3, random_state=42)
-        y_val, y_test, u_val, u_test = train_test_split(y_tmp, u_tmp, test_size=0.5, random_state=42)
-
-        model = MLP_dir(k,p,q)
-        model.fit(epochs,y_train,u_train,y_val,u_val)
-        
-        # SAVE
-        model_path = osp.join('metrics','models',f'MLP_dir_{k}-{p}-{q}',name)
-        if not osp.exists(model_path): 
-            os.makedirs(model_path)
-        
-        model.save_eval_plot(
-            y_test,u_test,
-            path=osp.join(model_path,f'{epochs}.png')
-        )
-        model.save_model(osp.join(model_path,f'{epochs}.pth'))
-    
-
-    # video_from_folder('frames',fps=15)
     
     
 
