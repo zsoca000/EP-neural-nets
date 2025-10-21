@@ -25,6 +25,8 @@ class MLP_dir:
             min_lr=1e-6
         )
         self.loss_function = nn.MSELoss()
+        self.y_scaler = MinMaxScaler()
+        self.u_scaler = MinMaxScaler()
         self.train_losses = []
         self.val_losses = []
         self.epochs = 0
@@ -54,16 +56,18 @@ class MLP_dir:
         for epoch in range(epochs):
             # Training Phase
             self.model.train()
+            train_loss = 0.0
             for input, output_true in zip(input_train,output_train):
                 output_pred = self.model(input)
                 loss = self.loss_function(output_pred, output_true)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-            
+                train_loss += loss.item()
+            train_loss /= input_train.shape[0]
             # Validation Phase
             self.model.eval()
-            val_loss  = 0
+            val_loss  = 0.0
             with torch.no_grad():
                 for input, output_true in zip(input_val,output_val):
                     val_outputs = self.model(input)
@@ -73,13 +77,13 @@ class MLP_dir:
 
             # Update training history
             self.epochs += 1
-            self.train_losses.append(loss.item())
+            self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
 
             if verbose: 
                 print(
                     f'Epoch {epoch+1}/{epochs},', 
-                    f'Loss: {loss.item()},',
+                    f'Loss: {train_loss},',
                     f'Val Loss: {val_loss},', 
                     f'LR: {self.scheduler.get_last_lr()[0]}'
                 )
