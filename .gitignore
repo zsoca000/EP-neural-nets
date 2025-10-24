@@ -3,5 +3,6 @@ tmp
 data/input
 data/output
 __pycache__/
+**/__pycache__/
 *.py[codz]
 *$py.class
