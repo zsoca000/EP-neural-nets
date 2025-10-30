@@ -398,7 +398,7 @@ def comp_datasets_fft(data_set_list: list[InputsSignals],num_samples=5):
 
 if __name__ == '__main__':
     
-    n = 1000
+    n = 200
     seed = 42
     input_path = osp.join('data','input')
     config_path = osp.join('data','config')

@@ -1,5 +1,6 @@
 literature
 tmp
+metrics
 data/input
 data/output
 __pycache__/

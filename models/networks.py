@@ -31,8 +31,7 @@ class LSTM(nn.Module):
     def __init__(self, input_size, output_size, p, q, seed=42):
         super(LSTM, self).__init__()
         torch.manual_seed(seed)
-
-        self.lstm = nn.LSTM(input_size, p, num_layers=q, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size=p, num_layers=q, batch_first=True)
         self.fc = nn.Linear(p, output_size)
 
         # Xavier/He initialization
