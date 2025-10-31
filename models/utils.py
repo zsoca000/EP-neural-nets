@@ -70,10 +70,10 @@ class ErrorMetrics:
 
     @property
     def MSE_rel(self):
-        ret = (self.X_t - self.X_p) ** 2
-        ret = ret.mean()
+        diff = np.clip(self.X_t - self.X_p, -1e6, 1e6)   # avoid overflow
+        ret = (diff ** 2).mean(dtype=np.float64)        # stable mean
         return float(ret)
-    
+        
     @property
     def MAE_rel(self):
         ret = np.abs(self.X_t - self.X_p)
@@ -87,4 +87,12 @@ class ErrorMetrics:
         ret = np.abs(X_t_inv - X_p_inv)
         ret = ret.mean()
         return float(ret)
+    
+    @property
+    def dictionary(self):
+        return {
+            'MSE_rel' : self.MSE_rel,
+            'MAE_rel' : self.MAE_rel,
+            'MAE': self.MAE,
+        }
 

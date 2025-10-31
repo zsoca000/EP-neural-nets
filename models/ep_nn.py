@@ -50,7 +50,6 @@ class EP_NN:
         self, 
         epochs, # epoch
         y_train,u_train,y_val,u_val, # data
-        y_tests=None, u_tests=None,
         config_path='train_config.json', # train config path
         verbose=True # logging
     ):
@@ -136,21 +135,10 @@ class EP_NN:
                 val_loss /= (n_val / batch_size)
                 self.scheduler.step(val_loss)
 
-            # Calculate test results for each epoch
-            if y_tests and u_tests:
-                glob_test_losses, loc_test_losses = [], []
-                for y_test, u_test in zip(y_tests, u_tests):
-                    glob_test_losses += [self.glob_err(y_test,u_test).MSE_rel]
-                    loc_test_losses += [self.loc_err(y_test,u_test).MSE_rel]
-
-
             # Update training history
             self.epochs += 1
             self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
-            if y_tests and u_tests:
-                self.loc_test_losses.append(loc_test_losses)
-                self.glob_test_losses.append(glob_test_losses)
             
             # Logging
             if verbose: 

@@ -6,19 +6,24 @@ import os
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
+
 def load_params(config_path):
     with open(config_path, 'r') as f:
         return json.load(f)
 
 
 class BaselineMultisine:
+    
+    name = 'bl_ms'
 
-    def __init__(self,config_path,seed=42):
+    def __init__(self,config_dir,seed=42):
+        
+        config_path = osp.join(config_dir,f'{self.name}.json')
+        
         self.seed = seed
         self.params = load_params(config_path)
         self.rng = np.random.default_rng(seed)
         
-
 
     def pick(self,param,size=1):
         if isinstance(param, list):
@@ -67,7 +72,7 @@ class BaselineMultisine:
     def save_signals(self,n,folder_path=''):
         if not osp.exists(folder_path): os.makedirs(folder_path)
         np.save(
-            osp.join(folder_path,f'bl_ms_{self.seed}_{n}.npy'),
+            osp.join(folder_path,f'{self.name}_{self.seed}_{n}.npy'),
             np.array([self.signal for _ in range(n)],dtype=object),
             allow_pickle=True
         )
@@ -75,7 +80,12 @@ class BaselineMultisine:
 
 class PowerDecayMultisine:
     
-    def __init__(self,config_path,seed=42):
+    name = 'pd_ms'
+
+    def __init__(self,config_dir,seed=42):
+        
+        config_path = osp.join(config_dir,f'{self.name}.json')
+        
         self.seed = seed
         self.params = load_params(config_path)
         self.rng = np.random.default_rng(seed)
@@ -102,14 +112,20 @@ class PowerDecayMultisine:
     def save_signals(self,n,folder_path=''):
         if not osp.exists(folder_path): os.makedirs(folder_path)
         np.save(
-            osp.join(folder_path,f'pd_ms_{self.seed}_{n}.npy'),
+            osp.join(folder_path,f'{self.name}_{self.seed}_{n}.npy'),
             np.array([self.signal for _ in range(n)],dtype=object),
             allow_pickle=True
         )
 
 
 class GaussianProcess:
-    def __init__(self, config_path, seed=42):
+    
+    name = "gp"
+    
+    def __init__(self, config_dir, seed=42):
+
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
         self.seed = seed
         self.params = load_params(config_path)
         self.rng = np.random.default_rng(seed)
@@ -143,14 +159,20 @@ class GaussianProcess:
     def save_signals(self,n,folder_path=''):
         if not osp.exists(folder_path): os.makedirs(folder_path)
         np.save(
-            osp.join(folder_path,f'gp_{self.seed}_{n}.npy'),
+            osp.join(folder_path,f'{self.name}_{self.seed}_{n}.npy'),
             np.array([self.signal for _ in range(n)],dtype=object),
             allow_pickle=True
         )
 
 
 class RandomWalk:
-    def __init__(self, config_path, seed=42):
+    
+    name = 'rw'
+    
+    def __init__(self, config_dir, seed=42):
+
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
         self.seed = seed
         self.params = load_params(config_path)
         self.rng = np.random.default_rng(seed)
@@ -189,7 +211,7 @@ class RandomWalk:
     def save_signals(self, n, folder_path=''):
         if not osp.exists(folder_path): os.makedirs(folder_path)
         np.save(
-            osp.join(folder_path, f'rw_{self.seed}_{n}.npy'),
+            osp.join(folder_path, f'{self.name}_{self.seed}_{n}.npy'),
             np.array([self.signal for _ in range(n)], dtype=object),
             allow_pickle=True
         )
@@ -197,8 +219,13 @@ class RandomWalk:
 
 class Amplitude:
 
-    def __init__(self, config_path):
-         self.params = load_params(config_path)
+    name = 'amplitude'
+
+    def __init__(self, config_dir):
+         
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
+        self.params = load_params(config_path)
     
     def save_signals(self, folder_path=''):
         if not osp.exists(folder_path): os.makedirs(folder_path)
@@ -216,15 +243,21 @@ class Amplitude:
             eps_list += [np.sin(t) * eps_max]
 
         np.save(
-            osp.join(folder_path, f'amplitude.npy'),
+            osp.join(folder_path, f'{self.name}.npy'),
             np.array(eps_list, dtype=object),
             allow_pickle=True
         )
             
 
 class Cyclic:
-    def __init__(self, config_path):
-         self.params = load_params(config_path)
+    
+    name = 'cyclic'
+    
+    def __init__(self, config_dir):
+         
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
+        self.params = load_params(config_path)
     
     def save_signals(self,folder_path=''):
         if not osp.exists(folder_path): os.makedirs(folder_path)
@@ -235,15 +268,21 @@ class Cyclic:
         eps = np.sin(t) * self.params['amplitude']
     
         np.save(
-            osp.join(folder_path, f'cyclic.npy'),
+            osp.join(folder_path, f'{self.name}.npy'),
             eps.reshape(1, -1).astype(object),
             allow_pickle=True
         )
 
 
 class Impulse:
-    def __init__(self, config_path):
-         self.params = load_params(config_path)
+
+    name = 'impulse'
+
+    def __init__(self, config_dir):
+         
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
+        self.params = load_params(config_path)
     
 
     def save_signals(self, folder_path=''):
@@ -259,14 +298,20 @@ class Impulse:
         # t -= mu - 8*sigma
 
         np.save(
-            osp.join(folder_path, f'impulse.npy'),
+            osp.join(folder_path, f'{self.name}.npy'),
             eps.reshape(1, -1).astype(object),
             allow_pickle=True
         )
 
 
 class Resolution:
-    def __init__(self, config_path):
+
+    name = 'resolution'
+
+    def __init__(self, config_dir):
+
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
         self.params = load_params(config_path)
     
 
@@ -279,14 +324,20 @@ class Resolution:
             eps_list += [np.sin(t) * self.params['amplitude']]
 
         np.save(
-            osp.join(folder_path, f'resolution.npy'),
+            osp.join(folder_path, f'{self.name}.npy'),
             np.array(eps_list, dtype=object),
             allow_pickle=True
         )
     
 
 class PieceWise:
-    def __init__(self,config_path):
+    
+    name = 'piecewise'
+    
+    def __init__(self,config_dir):
+
+        config_path = osp.join(config_dir,f'{self.name}.json')
+
         self.config = load_params(config_path)
     
     def save_signals(self,folder_path=''):
@@ -294,7 +345,7 @@ class PieceWise:
         n_ts = self.config['n_ts']
         
         np.save(
-            osp.join(folder_path, f'piecewise.npy'),
+            osp.join(folder_path, f'{self.name}.npy'),
             np.concatenate([
                 np.linspace(points[i],points[i+1],n_ts)
                 for i in range(len(points)-1)
@@ -303,36 +354,35 @@ class PieceWise:
         )
 
         
-# GENERATORS = {
-#     'random' : {
-#         'bl_ms' : BaselineMultisine(config_path=osp.join(CONFIG_PATH,'bl_ms.json'),seed=SEED),
-#         'pd_ms' : PowerDecayMultisine(config_path=osp.join(CONFIG_PATH,'pd_ms.json'),seed=SEED),
-#         'gp' : RandomWalk(config_path=osp.join(CONFIG_PATH,'gp.json'),seed=SEED),
-#         'rw' : GaussianProcess(config_path=osp.join(CONFIG_PATH,'rw.json'),seed=SEED),
-#     },
-#     'static' : {
-#         'amplitude' : Amplitude(config_path=f'{CONFIG_PATH}/amplitude.json'),
-#         'cyclic' : Cyclic(config_path=f'{CONFIG_PATH}/amplitude.json'),
-#         'impulse' : Impulse(config_path=f'{CONFIG_PATH}/amplitude.json'),
-#         'resolution' : Resolution(config_path=f'{CONFIG_PATH}/amplitude.json'),
-#     }
-# }
+class Combined:
+    
+    name = 'combined'
 
-GENERATORS = {
-    'random' : {
-        'bl_ms' : BaselineMultisine,
-        'pd_ms' : PowerDecayMultisine,
-        'rw' : RandomWalk,
-        'gp' : GaussianProcess,
-    },
-    'static' : {
-        'amplitude' : Amplitude,
-        'cyclic' : Cyclic,
-        'impulse' : Impulse,
-        'resolution' : Resolution,
-        'piecewise' : PieceWise,
-    }
-}
+    def __init__(self, config_dir, seed=42):
+
+        self.config_dir = config_dir
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
+    
+    def save_signals(self,n,folder_path=''):
+        
+        signals = []
+
+        for GEN in [BaselineMultisine, PowerDecayMultisine, GaussianProcess, RandomWalk]:
+            generator = GEN(config_dir=self.config_dir, seed=self.seed)
+
+            signals += [generator.signal for _ in range(n//4)]
+        
+        self.rng.shuffle(signals)
+
+        np.save(
+            osp.join(folder_path,f'{self.name}_{self.seed}_{n}.npy'),
+            np.array(signals,dtype=object),
+            allow_pickle=True
+        )
+
+
+ 
 
 class InputsSignals:
     
@@ -400,23 +450,16 @@ if __name__ == '__main__':
     
     n = 200
     seed = 42
-    input_path = osp.join('data','input')
-    config_path = osp.join('data','config')
-
-    for name, G in GENERATORS['random'].items():
-        generator = G(
-            config_path=osp.join(config_path,'random',f'{name}.json'), 
-            seed=seed
-        )
-        generator.save_signals(
-            n=n,
-            folder_path=osp.join(input_path,'random')
-        )
     
-    for name, G in GENERATORS['static'].items():
-        generator = G(
-            config_path=osp.join(config_path,'static',f'{name}.json'), 
-        )
-        generator.save_signals(
-            folder_path=osp.join(input_path, 'static')
-        )
+    input_dir = osp.join('data','input')
+    config_dir = osp.join('data','config')
+
+
+    for GEN in [BaselineMultisine, PowerDecayMultisine, GaussianProcess, RandomWalk, Combined]:
+        generator = GEN(config_dir=osp.join(config_dir,'random'), seed=seed)
+        generator.save_signals(n=n,folder_path=osp.join(input_dir,'random'))
+
+
+    for GEN in [Amplitude, Cyclic, Impulse, Resolution]:
+        generator = GEN(config_dir=osp.join(config_dir,'static'))
+        generator.save_signals(folder_path=osp.join(input_dir,'static'))
