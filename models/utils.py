@@ -87,6 +87,15 @@ class ErrorMetrics:
         ret = np.abs(X_t_inv - X_p_inv)
         ret = ret.mean()
         return float(ret)
+
+    @property
+    def RMSE(self):
+        X_t_inv = self.scaler.inverse_transform(self.X_t)
+        X_p_inv = self.scaler.inverse_transform(self.X_p)
+        ret = (X_t_inv - X_p_inv)*(X_t_inv - X_p_inv)
+        ret = ret.mean()
+        ret = ret**(0.5)
+        return float(ret)
     
     @property
     def dictionary(self):
@@ -94,5 +103,6 @@ class ErrorMetrics:
             'MSE_rel' : self.MSE_rel,
             'MAE_rel' : self.MAE_rel,
             'MAE': self.MAE,
+            'RMSE': self.RMSE,
         }
 

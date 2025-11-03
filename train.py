@@ -13,147 +13,6 @@ from data.materials import load_responses
 from models.utils import ErrorMetrics, data_to_tensor, hhmmss
 
 
-def train_model(
-    model:EP_NN, 
-    mat_name:str, inp_name:str, 
-    config_path:str, verbose:bool=False,
-    epoch:int=500,
-) -> np.float32: 
-    
-    eps_list, sig_list = load_responses(
-        mat_name,'random',inp_name,
-        data_path='data'
-    )
-
-    y_list = data_to_tensor(sig_list)
-    u_list = data_to_tensor(eps_list)
-    y_train, y_tmp, u_train, u_tmp = train_test_split(y_list, u_list, test_size=0.3, random_state=42)
-
-    y_val, y_test, u_val, u_test = train_test_split(y_tmp, u_tmp, test_size=0.5, random_state=42)
-
-    if verbose: print(f'Train {model.name} with {model.num_params} number of params...')
-
-    model.fit(
-        epochs=epoch,
-        y_train=y_train, u_train=u_train,
-        y_val=y_val,u_val=u_val,
-        config_path=config_path,
-        verbose=verbose,
-    )
-
-    return model.glob_err(y_test,u_test).MSE_rel
-
-
-def eval_model(
-    model:EP_NN, 
-    mat_name:str, inp_type:str, inp_name:str, 
-    save_plot:bool=False,plot_path:str=None
-) -> tuple[ErrorMetrics,ErrorMetrics]:
- 
-    eps_list, sig_list = load_responses(
-        mat_name,inp_type,inp_name,
-        data_path='data'
-    )
-    
-    y_list = data_to_tensor(sig_list)
-    u_list = data_to_tensor(eps_list)
-
-    glob_err = model.glob_err(
-        y_list,u_list,
-        save_plot=save_plot,
-        path=plot_path
-    )
-
-    loc_err = model.loc_err(
-        y_list,u_list,
-    )
-
-    return glob_err, loc_err
-
-
-def task1():
-
-    # Trainer config
-    trainer = Trainer(
-        mat_name='isotropic-swift', 
-        inp_name='pd_ms_42_200', 
-        config_path='models/train_config.json',
-        seeds=[42, 56, 17, 83, 29, 64, 90, 11, 75, 38],
-        epochs=500,
-    )
-
-    # Evaluator config
-    evaluator = Evaluator(
-        mat_name='isotropic-swift',
-        eval_sets = {
-            'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
-            'random': ['bl_ms_42_200','gp_42_200','rw_42_200']
-        }
-    )
-    
-    # Model space
-    model_space = [
-        (MLP , False, list(product([2,3,5,8],[2,3,5,8],[2,3,5,8]))),
-        (MLP , True , list(product([2,3,5,8],[2,3,5,8],[2,3,5,8]))),
-        (LSTM, False, list(product([0,2,3,5],[2,3,5,8],[1,2]))),
-        (LSTM, True, list(product([2,3,5],[2,3,5,8],[1,2]))),
-    ]
-    
-    num_runs = len(model_space) * sum([len(model_space[-1]) for i in range(len(model_space))])
-
-    sum_time = 0.0
-    count = 0
-
-    for network, incr, search_space in model_space:
-        for k,p,q in search_space:
-            
-            tic = time.time()
-
-            # Seek and train model
-            model = trainer.get_best_model(k,p,q, incr, network)
-            model_dir = trainer.save_model(model)
-
-            # Eval model
-            evaluator.evaluate(model_dir)
-
-            toc = time.time()
-            sum_time += toc - tic
-            count += 1
-            avg_time = sum_time / count
-
-            print(
-                f"Estimated remaining time ({count} / {num_runs}):", 
-                hhmmss(avg_time * (num_runs - count))
-            )
-
-
-def task2():
-    """Check large parameter models"""
-
-    trainer = Trainer(
-        mat_name='isotropic-swift', 
-        inp_name='pd_ms_42_200', 
-        config_path='models/train_config.json',
-        seeds=[56],
-        epochs=500,
-    )
-
-    evaluator = Evaluator(
-        mat_name='isotropic-swift',
-        eval_sets = {
-            'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
-            'random': ['bl_ms_42_200','gp_42_200','rw_42_200']
-        }
-    )
-
-    # Train model
-    model = trainer.get_best_model(5,16,3, incr=False, network=MLP,verbose=True)
-    model_dir = trainer.save_model(model)
-    
-    # Eavluation
-    evaluator.evaluate(model_dir)
-
-
 class Trainer:
     
     def __init__(self,mat_name:str, inp_name:str, config_path:str, seeds:list[int],epochs:int):
@@ -162,6 +21,8 @@ class Trainer:
         self.config_path = config_path
         self.seeds = seeds
         self.epochs = epochs
+
+        self.load_data(data_path='data')
 
         parent_folder = osp.join('metrics',mat_name,inp_name)
         if not osp.exists(parent_folder): os.makedirs(parent_folder)
@@ -249,8 +110,6 @@ class Trainer:
 
 
     def _train_single(self,model:EP_NN,verbose:bool=False):
-        
-        self.load_data(data_path='data')
 
         if verbose: print(f'Train {model.name} with {model.num_params} number of params...')
 
@@ -279,6 +138,22 @@ class Trainer:
         return model_dir
 
 
+    def save_test_eval(self,model:EP_NN,save_plot:bool=True):
+
+        model_dir = osp.join('metrics',self.mat_name,self.inp_name,model.name)
+        test_eval_path = osp.join(model_dir,'test_eval.json')
+        plot_path = osp.join(model_dir,'test_eval.png')
+        
+        glob_err = model.glob_err(self.y_test,self.u_test,save_plot=save_plot,path=plot_path)
+        loc_err = model.loc_err(self.y_test,self.u_test)
+        
+        with open(test_eval_path, 'w') as f:
+            json.dump({
+                    'global' : glob_err.dictionary,
+                    'local' : loc_err.dictionary
+            },f)       
+
+
 class Evaluator:
     
     def __init__(self, mat_name:str, eval_sets:dict):
@@ -287,12 +162,12 @@ class Evaluator:
         self.eval_metrics = {}
 
     
-    def evaluate(self, model_dir:str, verbose=False):
+    def evaluate(self, model_dir:str, verbose:bool=False, overwrite:bool=False):
         
         model_path = osp.join(model_dir,'model.pth')
         eval_metrics_path = osp.join(model_dir,'eval_metrics.json')
         
-        if osp.exists(eval_metrics_path):
+        if osp.exists(eval_metrics_path) and not overwrite:
             print(f"{model_dir} already evaluated — skipping ⚠️")
         else:  
             
@@ -344,11 +219,167 @@ class Evaluator:
 
         return glob_err, loc_err
 
+
+def task1():
+
+    # Trainer config
+    trainer = Trainer(
+        mat_name='isotropic-swift', 
+        inp_name='pd_ms_42_200', 
+        config_path='models/train_config.json',
+        seeds=[42, 56, 17, 83, 29, 64, 90, 11, 75, 38],
+        epochs=500,
+    )
+
+    # Evaluator config
+    evaluator = Evaluator(
+        mat_name='isotropic-swift',
+        eval_sets = {
+            'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
+            'random': ['bl_ms_42_200','gp_42_200','rw_42_200']
+        }
+    )
     
+    # Model space
+    model_space = [
+        (MLP , False, list(product([2,3,5,8],[2,3,5,8],[2,3,5,8]))),
+        (MLP , True , list(product([2,3,5,8],[2,3,5,8],[2,3,5,8]))),
+        (LSTM, False, list(product([0,2,3,5],[2,3,5,8],[1,2]))),
+        (LSTM, True, list(product([2,3,5],[2,3,5,8],[1,2]))),
+    ]
     
-        
+    num_runs = sum(len(params) for _, _, params in model_space)
+
+    sum_time = 0.0
+    count = 0
+
+    for network, incr, search_space in model_space:
+        for k,p,q in search_space:
+            
+            tic = time.time()
+
+            # Seek and train model
+            model = trainer.get_best_model(k,p,q, incr, network)
+            model_dir = trainer.save_model(model)
+            trainer.save_test_eval(model) # TODO: do not save eval always! Check if it existed before!
+
+            # Eval model
+            evaluator.evaluate(model_dir, overwrite=True) # TODO: do not overwrite!!!
+
+            toc = time.time()
+            sum_time += toc - tic
+            count += 1
+            avg_time = sum_time / count
+
+            print(
+                f"Estimated remaining time ({count} / {num_runs}):", 
+                hhmmss(avg_time * (num_runs - count))
+            )
+
+
+def task2():
+    """Check large parameter models"""
+
+    trainer = Trainer(
+        mat_name='isotropic-swift', 
+        inp_name='pd_ms_42_200', 
+        config_path='models/train_config.json',
+        seeds=[56],
+        epochs=500,
+    )
+
+    evaluator = Evaluator(
+        mat_name='isotropic-swift',
+        eval_sets = {
+            'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
+            'random': ['bl_ms_42_200','gp_42_200','rw_42_200']
+        }
+    )
+
+    # Train model
+    model = trainer.get_best_model(7,8,3, incr=True, network=MLP,verbose=True)
+    model_dir = trainer.save_model(model)
+    trainer.save_test_eval(model)
+
+    # Eavluation
+    evaluator.evaluate(model_dir)
+
+
+def task3():
+    
+    # Model params
+    k,p,q,incr,network = 8,5,3,True,MLP
+
+    # Training sets
+    train_inp_names = [
+        'bl_ms_42_200',
+        'combined_42_200',
+        'gp_42_200',
+        'pd_ms_42_200',
+        'rw_42_200'
+    ]
+
+    # Material behaviour (known model)
+    mat_names = [
+        'isotropic-swift',
+        'isotropic-linear',
+        'kineamitc-linear',
+        'kinematic-armstrong-fredrick',
+        'mixed-linear',
+        'mixed-armstrong-fredrick'
+    ]
+
+    num_runs = len(train_inp_names) * len(mat_names)
+
+    for mat_name in mat_names:
+        for train_inp_name in train_inp_names:
+            
+            
+            # Trainer config
+            trainer = Trainer(
+                mat_name=mat_name, 
+                inp_name=train_inp_name, 
+                config_path='models/train_config.json',
+                seeds=[42, 56, 17, 83, 29, 64, 90, 11, 75, 38],
+                epochs=500,
+            )
+
+            # Evaluator config
+            evaluator = Evaluator(
+                mat_name=mat_name,
+                eval_sets = {
+                    'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
+                    'random': train_inp_name,
+                }
+            )
+            
+            tic = time.time()
+
+            # Seek and train model
+            model = trainer.get_best_model(k,p,q, incr, network)
+            model_dir = trainer.save_model(model)
+            trainer.save_test_eval(model)
+
+            # Eval model
+            evaluator.evaluate(model_dir, overwrite=True)
+
+            toc = time.time()
+            sum_time += toc - tic
+            count += 1
+            avg_time = sum_time / count
+
+            print(
+                f"Estimated remaining time ({count} / {num_runs}):", 
+                hhmmss(avg_time * (num_runs - count))
+            )
+
+
+
 if __name__ == '__main__':
     
-    task2()
+    task3()
+
+
+            
 
 
