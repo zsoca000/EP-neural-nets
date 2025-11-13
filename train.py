@@ -1,80 +1,333 @@
-import os
-import time
+import torch
+import yaml
 import json
-import os.path as osp
-import numpy as np
-from tqdm import tqdm
-from itertools import product
+import torch.nn as nn
+from pathlib import Path
+
+from models.models import SeqLSTM, SeqMLP, get_model
+from data.materials import load_responses
 from sklearn.model_selection import train_test_split
 
-from models.ep_nn import EP_NN, load_model
-from models.networks import LSTM, MLP
-from data.materials import load_responses
-from models.utils import ErrorMetrics, data_to_tensor, hhmmss
+class ModelNotLoadedError(RuntimeError):
+    pass
 
 
 class Trainer:
     
-    def __init__(self,mat_name:str, inp_name:str, config_path:str, seeds:list[int],epochs:int):
+    def __init__(self, mat_name, inp_name, config_path='configs/train.yaml',data_dir='data'):
+        
         self.mat_name = mat_name
         self.inp_name = inp_name
-        self.config_path = config_path
-        self.seeds = seeds
-        self.epochs = epochs
+        self.data_dir = data_dir
+        self.model = None
 
-        self.load_data(data_path='data')
+        with open(config_path, "r") as f:
+            self.config = yaml.safe_load(f)
+    
 
-        parent_folder = osp.join('metrics',mat_name,inp_name)
-        if not osp.exists(parent_folder): os.makedirs(parent_folder)
+    def set_model(self,model:SeqMLP|SeqMLP):
+        self.model = model
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
+        self.model.to(self.device)
+        self.optimizer = torch.optim.AdamW(
+            self.model.parameters(), 
+            lr=self.config['optimizer']['lr'],
+            weight_decay=self.config['optimizer']['weight_decay'],
+        )
         
-
-    def load_data(self,data_path):
-        eps_list, sig_list = load_responses(
-            self.mat_name,'random',self.inp_name,
-            data_path=data_path
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', 
+            factor=self.config['scheduler']['factor'], 
+            patience=self.config['scheduler']['patience'], 
+            min_lr=self.config['scheduler']['min_lr'], 
         )
 
-        y_list = data_to_tensor(sig_list)
-        u_list = data_to_tensor(eps_list)
+        self.loss_function = nn.MSELoss()
+        self.epochs = 0
+        self.train_losses = []
+        self.val_losses = []
 
-        self.y_train, y_tmp, self.u_train, u_tmp = train_test_split(
+      
+    def load_data(self):
+        
+        u_list, y_list = load_responses(
+            self.mat_name, 'random', self.inp_name,
+            data_dir=self.data_dir
+        )
+
+        # Split the incoming data
+        y_train, y_tmp, u_train, u_tmp = train_test_split(
             y_list, u_list, test_size=0.3, random_state=42
         )
-
-        self.y_val, self.y_test, self.u_val, self.u_test = train_test_split(
+        y_val, self.y_test, u_val, self.u_test = train_test_split(
             y_tmp, u_tmp, test_size=0.5, random_state=42
         )
 
+        # Fit the model's preprocessor on the training data
+        self.model.preprocessor.fit(u_train,y_train)
 
-    def get_best_model(
-        self,
-        k:int, p:int, q:int, incr:bool, network:MLP|LSTM,
-        verbose=False,
-    ) -> tuple[EP_NN,np.float32]:
+        # Preprocess the training data
+        input_train, output_train = self.model.preprocessor.transform(
+            u_train, y_train
+        ) # (S, T-k, k*Fy+(k+1)*Fu), (S, T-k, Fy)
 
-        exists, folder_path = self.model_exists(k,p,q,incr,network)
+        # Preprocess the validation data
+        input_val, output_val = self.model.preprocessor.transform(
+            u_val,y_val
+        ) # (S, T-k, k*Fy+(k+1)*Fu), (S, T-k, Fy)
+
+        # Put them on device
+        self.input_train = input_train.to(self.device)
+        self.output_train = output_train.to(self.device)
+        self.input_val = input_val.to(self.device)
+        self.output_val = output_val.to(self.device)
+
+
+    def train(self, model:SeqMLP|SeqLSTM, epochs, verbose=True):
+
+        # Load the data and the model
+        self.set_model(model)
+        self.load_data()
+        
+
+        # For early stopping
+        best_val_loss = float('inf')
+        epochs_no_improve = 0
+        
+        # Train
+        for epoch in range(epochs):
+            
+            # Train and val
+            train_loss = self.train_epoch()
+            val_loss = self.val_epoch()
+            
+            # Updates
+            self.scheduler.step(val_loss)
+            self.epochs += 1
+            self.train_losses.append(train_loss)
+            self.val_losses.append(val_loss)
+            
+            # Logging
+            if verbose: 
+                print(
+                    f'Epoch {epoch + 1:>{len(str(epochs))}}/{epochs} | '
+                    f'Loss: {train_loss:.10f} | '
+                    f'Val Loss: {val_loss:.10f} | '
+                    f'LR: {self.scheduler.get_last_lr()[0]:.6f}'
+                )
+            
+            # Early stopping check
+            if "early_stopping" in self.config:
+                if val_loss < best_val_loss - self.config["early_stopping"]["min_delta"]:
+                    best_val_loss = val_loss
+                    epochs_no_improve = 0
+                    best_state = self.model.state_dict()  # Save best weights
+                else:
+                    epochs_no_improve += 1
+
+                if epochs_no_improve >= self.config["early_stopping"]["patience"]:
+                    if verbose: print(f"Early stopping at epoch {epoch+1}")
+                    self.model.load_state_dict(best_state)  # Restore best weights
+                    break
+    
+
+    def train_epoch(self):
+        
+        self.model.train()
+        train_loss = 0.0
+        n_train = len(self.input_train)
+        
+        for i in range(n_train):
+            
+            out_t = self.output_train[i]
+            out_p = self.model(self.input_train[i])
+
+            loss = self.loss_function(out_p, out_t)
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            train_loss += loss.item()
+
+        return train_loss / n_train
+
+
+    @torch.no_grad()
+    def val_epoch(self):
+        
+        self.model.eval()
+        n_val = len(self.input_val)
+        val_loss  = 0.0
+
+        for i in range(n_val):
+        
+            out_t = self.output_val[i]
+            out_p = self.model(self.input_val[i])
+            
+            loss = self.loss_function(out_p, out_t)
+            val_loss += loss.item()
+        
+        return val_loss / n_val
+    
+    
+    def load(self,load_path):
+        # Load the checkpoint of the model
+        state_dict = self.load_state_dict_from_path(load_path)
+        self.load_state_dict(state_dict)
+
+    
+    @staticmethod
+    def load_state_dict_from_path(load_path: str | Path) -> dict:
+        return torch.load(
+            load_path, 
+            map_location=torch.device('cpu'), 
+            weights_only=False,
+        )
+
+    
+    def load_state_dict(self,state_dict):
+
+        # If we use the new implementation, we can check
+        if "mat_name" in state_dict and "inp_name" in state_dict:
+            
+            if self.mat_name != state_dict["mat_name"]:
+                raise RuntimeError(
+                    f"Trainer was defined for '{self.mat_name}', "
+                    f"but tried to load a state for '{state_dict['mat_name']}'."
+                )
+            if self.inp_name != state_dict["inp_name"]:
+                raise RuntimeError(
+                    f"Trainer was defined for '{self.inp_name}', "
+                    f"but tried to load a state for '{state_dict['inp_name']}'."
+                )
+        
+        # Init the model based on the state dict
+        model = self.load_model(state_dict)
+
+        # Set the model
+        self.set_model(model)
+
+        # Reload the trainer
+        self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+        self.scheduler.load_state_dict(state_dict['scheduler_state_dict'])
+        self.train_losses = state_dict['train_losses'] if 'train_losses' in state_dict else []
+        self.val_losses = state_dict['val_losses'] if 'val_losses' in state_dict else []
+        self.epochs = state_dict['epochs'] if 'epochs' in state_dict else 0
+
+    
+    @staticmethod
+    def load_model(state_dict):
+        
+        # Network architecture
+        k,p,q = state_dict['k'], state_dict['p'], state_dict['q']
+        seed = state_dict['seed']
+        # Mode
+        if 'mode' in state_dict:
+            # New implementation
+            mode = state_dict['mode']
+        elif 'incr' in state_dict:
+            # Old implementation
+            mode = 'incr' if state_dict['incr'] else 'true'
+        
+        # Network name
+        if 'network_name' in state_dict:
+            # New implementation
+            network_name = state_dict['network_name']
+        elif 'network' in state_dict:
+            # Old implementation
+            network_name = state_dict['network'].__name__
+        
+        # Init an empty model
+        model = get_model(k,p,q,mode,network_name,seed)
+
+        # Reload the model
+        model.load_state_dict(state_dict['model_state_dict'])
+        model.preprocessor.dy_scaler.load_state_dict(state_dict['dy_scaler'])
+        model.preprocessor.y_scaler.load_state_dict(state_dict['y_scaler'])
+        model.preprocessor.u_scaler.load_state_dict(state_dict['u_scaler'])
+
+        return model
+
+
+    def save(self, save_dir='metrics'):
+        
+        if self.model is None: 
+            raise ModelNotLoadedError("Model not loaded. Please load it before try to save.")
+        
+        save_dir = Path(save_dir, self.mat_name, self.inp_name, self.model.name)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        torch.save(self.state_dict(), save_dir / 'model.pth')
+        print(f'{self.model.name} saved to {save_dir / 'model.pth'}!')
+        
+        self.load_data()
+        with open(save_dir / 'test_eval.json', 'w') as f:
+            json.dump(self.test_eval,f)
+
+        return save_dir
+
+    
+    @property
+    def test_eval(self):
+        return {
+            'global' : self.model.glob_err(self.y_test,self.u_test).dictionary,
+            'local' : self.model.loc_err(self.y_test,self.u_test).dictionary,
+        }
+
+
+    def state_dict(self):
+        return {
+            'mat_name': self.mat_name,
+            'inp_name': self.inp_name,
+            'seed': self.model.seed,
+            'incr': self.model.incr,
+            'network_name': self.model.network_name,
+            'k': self.model.k, 'p': self.model.p, 'q': self.model.q,
+            'model_state_dict': self.model.state_dict(),
+            'dy_scaler': self.model.preprocessor.dy_scaler.state_dict(),
+            'y_scaler': self.model.preprocessor.y_scaler.state_dict(),
+            'u_scaler': self.model.preprocessor.u_scaler.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'train_losses': self.train_losses,
+            'val_losses': self.val_losses,
+            'epochs': self.epochs,
+        }
+        
+
+    def find_best_model(self, k,p,q, mode, network_name, seeds, verbose=False, check_dir='metrics'):
+        
+        exists, load_dir = self.exists(k,p,q, mode, network_name, check_dir)
 
         if exists:
-            name = f'{k}-{p}-{q}-{'incr' if incr else 'dir'}-{network.__name__}'
-            print(f'{name} already exists - skipping ⚠️')
-            return load_model(osp.join(folder_path,'model.pth'))
+            print(f'{load_dir} already exists - loading instead of training ⚠️')
+            self.load(Path(load_dir,'model.pth'))
+
         else:
-            
             best_test_err = float('inf')
-            best_model = None
-        
-            for i,seed in enumerate(self.seeds):
-                model = EP_NN(k,p,q,incr=incr,network=network,seed=seed)
+            best_state = None
+
+            for i,seed in enumerate(seeds):
+                
+                model = get_model(k,p,q,mode,network_name,seed)
 
                 log = (
                     f'Train {model.name} model, '
                     f'for {self.mat_name} on {self.inp_name} '
-                    f'{i+1}/{len(self.seeds)} 🔄'
+                    f'{i+1}/{len(seeds)} 🔄'
                 )
                 print(log, end='\r')
-
-                test_err = self._train_single(model,verbose=verbose)
                 
+                self.train(
+                    model,
+                    epochs=500, # hardcoded
+                    verbose=verbose,
+                )
+
+                test_err = model.glob_err(self.y_test,self.u_test)
+                test_err = test_err.MSE_rel
+
                 log = log.replace(
                     '🔄', f'✅ - Test Error: {test_err:.8f}'
                 )
@@ -82,304 +335,37 @@ class Trainer:
 
                 if best_test_err > test_err:
                     best_test_err = test_err
-                    best_model = model
+                    best_state = self.state_dict()
             
-            return best_model
+            self.load_state_dict(best_state)
 
+    
+    def exists(self, k,p,q, mode, network_name, check_dir='metrics'):
 
-    def model_exists(self,k,p,q,incr,network):
+        parent_folder = Path(check_dir ,self.mat_name, self.inp_name)
         
-        parent_folder = osp.join(
-            'metrics',self.mat_name, self.inp_name
-        )
-
-        prefix = (
-            f"{network.__name__}-"
-            f"{'incr' if incr else 'dir'}-"
-            f"{k}-{p}-{q}"
-        )
-
+        # Try to find file with: net_name-mode-k-p-q
+        prefix = f'{network_name}-{mode}-{k}-{p}-{q}'
+        
         folder_path = None
-        for f in os.listdir(parent_folder):
-            full = os.path.join(parent_folder, f)
-            if os.path.isdir(full) and f.startswith(prefix):
-                folder_path = full
+        for f in parent_folder.iterdir():
+            if f.is_dir() and f.name.startswith(prefix):
+                folder_path = f
                 break
 
         return folder_path is not None, folder_path
 
 
-    def _train_single(self,model:EP_NN,verbose:bool=False):
-
-        if verbose: print(f'Train {model.name} with {model.num_params} number of params...')
-
-        model.fit(
-            epochs=self.epochs,
-            y_train=self.y_train, u_train=self.u_train,
-            y_val=self.y_val,u_val=self.u_val,
-            config_path=self.config_path,
-            verbose=verbose,
-        )
-
-        return model.glob_err(self.y_test,self.u_test).MSE_rel
     
-
-    def save_model(self,model:EP_NN):
-        
-        model_dir = osp.join('metrics',self.mat_name,self.inp_name,model.name)
-        model_path = osp.join(model_dir,'model.pth')
-
-        if not osp.exists(model_dir): 
-            os.makedirs(model_dir)
-        
-        if not osp.exists(model_path):
-            model.save(model_path)
-        
-        return model_dir
-
-
-    def save_test_eval(self,model:EP_NN,save_plot:bool=True):
-
-        model_dir = osp.join('metrics',self.mat_name,self.inp_name,model.name)
-        test_eval_path = osp.join(model_dir,'test_eval.json')
-        plot_path = osp.join(model_dir,'test_eval.png')
-        
-        glob_err = model.glob_err(self.y_test,self.u_test,save_plot=save_plot,path=plot_path)
-        loc_err = model.loc_err(self.y_test,self.u_test)
-        
-        with open(test_eval_path, 'w') as f:
-            json.dump({
-                    'global' : glob_err.dictionary,
-                    'local' : loc_err.dictionary
-            },f)       
-
-
-class Evaluator:
-    
-    def __init__(self, mat_name:str, eval_sets:dict):
-        self.mat_name = mat_name
-        self.eval_sets = eval_sets
-        self.eval_metrics = {}
-
-    
-    def evaluate(self, model_dir:str, verbose:bool=False, overwrite:bool=False):
-        
-        model_path = osp.join(model_dir,'model.pth')
-        eval_metrics_path = osp.join(model_dir,'eval_metrics.json')
-        
-        if osp.exists(eval_metrics_path) and not overwrite:
-            print(f"{model_dir} already evaluated — skipping ⚠️")
-        else:  
-            
-            model = load_model(model_path)
-            
-            for inp_type, eval_inp_names in self.eval_sets.items():
-                for eval_inp_name in eval_inp_names:
-                    
-                    if verbose: print(f'Evaluate {model_dir} on {inp_type}/{eval_inp_name}')
-
-                    glob_err, loc_err = self._eval_single(
-                        model, self.mat_name, inp_type, eval_inp_name,
-                    )
-
-                    self.eval_metrics[eval_inp_name] = {
-                        'global' : glob_err.dictionary,
-                        'local' : loc_err.dictionary
-                    }
-        
-            with open(eval_metrics_path, 'w') as f:
-                json.dump(self.eval_metrics, f)
-
-    
-    def _eval_single(
-        self,
-        model:EP_NN, 
-        mat_name:str, inp_type:str, inp_name:str, 
-        save_plot:bool=False, plot_path:str=None
-    ) -> tuple[ErrorMetrics,ErrorMetrics]:
-
-
-        eps_list, sig_list = load_responses(
-            mat_name,inp_type,inp_name,
-            data_path='data'
-        )
-        
-        y_list = data_to_tensor(sig_list)
-        u_list = data_to_tensor(eps_list)
-
-        glob_err = model.glob_err(
-            y_list,u_list,
-            save_plot=save_plot,
-            path=plot_path
-        )
-
-        loc_err = model.loc_err(
-            y_list,u_list,
-        )
-
-        return glob_err, loc_err
-
-
-def task1():
-
-    # Trainer config
-    trainer = Trainer(
-        mat_name='isotropic-swift', 
-        inp_name='pd_ms_42_200', 
-        config_path='models/train_config.json',
-        seeds=[42, 56, 17, 83, 29, 64, 90, 11, 75, 38],
-        epochs=500,
-    )
-
-    # Evaluator config
-    evaluator = Evaluator(
-        mat_name='isotropic-swift',
-        eval_sets = {
-            'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
-            'random': ['bl_ms_42_200','gp_42_200','rw_42_200']
-        }
-    )
-    
-    # Model space
-    model_space = [
-        (MLP , False, list(product([2,3,5,8],[2,3,5,8],[2,3,5,8]))),
-        (MLP , True , list(product([2,3,5,8],[2,3,5,8],[2,3,5,8]))),
-        (LSTM, False, list(product([0,2,3,5],[2,3,5,8],[1,2]))),
-        (LSTM, True, list(product([2,3,5],[2,3,5,8],[1,2]))),
-    ]
-    
-    num_runs = sum(len(params) for _, _, params in model_space)
-
-    sum_time = 0.0
-    count = 0
-
-    for network, incr, search_space in model_space:
-        for k,p,q in search_space:
-            
-            tic = time.time()
-
-            # Seek and train model
-            model = trainer.get_best_model(k,p,q, incr, network)
-            model_dir = trainer.save_model(model)
-            trainer.save_test_eval(model) # TODO: do not save eval always! Check if it existed before!
-
-            # Eval model
-            evaluator.evaluate(model_dir, overwrite=True) # TODO: do not overwrite!!!
-
-            toc = time.time()
-            sum_time += toc - tic
-            count += 1
-            avg_time = sum_time / count
-
-            print(
-                f"Estimated remaining time ({count} / {num_runs}):", 
-                hhmmss(avg_time * (num_runs - count))
-            )
-
-
-def task2():
-    """Check large parameter models"""
-
-    trainer = Trainer(
-        mat_name='isotropic-swift', 
-        inp_name='pd_ms_42_200', 
-        config_path='models/train_config.json',
-        seeds=[56],
-        epochs=500,
-    )
-
-    evaluator = Evaluator(
-        mat_name='isotropic-swift',
-        eval_sets = {
-            'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
-            'random': ['bl_ms_42_200','gp_42_200','rw_42_200']
-        }
-    )
-
-    # Train model
-    model = trainer.get_best_model(7,8,3, incr=True, network=MLP,verbose=True)
-    model_dir = trainer.save_model(model)
-    trainer.save_test_eval(model)
-
-    # Eavluation
-    evaluator.evaluate(model_dir)
-
-
-def task3():
-    
-    # Model params
-    k,p,q,incr,network = 8,5,3,True,MLP
-
-    # Training sets
-    train_inp_names = [
-        'bl_ms_42_200',
-        'combined_42_200',
-        'gp_42_200',
-        'pd_ms_42_200',
-        'rw_42_200'
-    ]
-
-    # Material behaviour (known model)
-    mat_names = [
-        'isotropic-swift',
-        'isotropic-linear',
-        'kineamitc-linear',
-        'kinematic-armstrong-fredrick',
-        'mixed-linear',
-        'mixed-armstrong-fredrick'
-    ]
-
-    num_runs = len(train_inp_names) * len(mat_names)
-
-    for mat_name in mat_names:
-        for train_inp_name in train_inp_names:
-            
-            
-            # Trainer config
-            trainer = Trainer(
-                mat_name=mat_name, 
-                inp_name=train_inp_name, 
-                config_path='models/train_config.json',
-                seeds=[42, 56, 17, 83, 29, 64, 90, 11, 75, 38],
-                epochs=500,
-            )
-
-            # Evaluator config
-            evaluator = Evaluator(
-                mat_name=mat_name,
-                eval_sets = {
-                    'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
-                    'random': train_inp_name,
-                }
-            )
-            
-            tic = time.time()
-
-            # Seek and train model
-            model = trainer.get_best_model(k,p,q, incr, network)
-            model_dir = trainer.save_model(model)
-            trainer.save_test_eval(model)
-
-            # Eval model
-            evaluator.evaluate(model_dir, overwrite=True)
-
-            toc = time.time()
-            sum_time += toc - tic
-            count += 1
-            avg_time = sum_time / count
-
-            print(
-                f"Estimated remaining time ({count} / {num_runs}):", 
-                hhmmss(avg_time * (num_runs - count))
-            )
-
-
-
 if __name__ == '__main__':
     
-    task3()
+    trainer = Trainer('isotropic-swift','pd_ms_42_200')
+    
+    trainer.find_best_model(
+        5,2,2,'dir','MLP',
+        seeds=[42, 56, 17, 83, 29],
+        check_dir='tmp2'
+    )
 
-
-            
-
+    trainer.save(save_dir='tmp2')
 

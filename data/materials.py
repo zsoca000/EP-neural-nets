@@ -1,71 +1,18 @@
+import torch
+import os
+import numpy as np
+from pathlib import Path
 from scipy.optimize import root
 from numpy import sign
-import numpy as np
 from tqdm import tqdm
 import os.path as osp
-import os
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 plt.rcParams.update({"text.usetex": True, "font.family": "Computer Modern"})
-
-# Linear elastic
-E = 2e9
-
-# Linear plastic
-H_iso = 750e6
-H_kin = 400e6
-
-# Swift
-a = 200e6
-n = 0.2
-eps0 = 0.0003
-Y0 = a*eps0**n * 1.5
-
-# Armstrong-Frederick
-b = 10
-
-# The material laws
-MATERIALS = {
-    'isotropic-swift': {
-        'E' : E,
-        'Y' : lambda λ : a*(eps0+λ)**n,
-        'dalpha': lambda alpha, deps_p, dλ : 0,
-        'color': '#000aff',
-    },
-    'isotropic-linear': {
-        'E' : E,
-        'Y' : lambda λ : (Y0/H_iso+λ)*H_iso,
-        'dalpha': lambda alpha, deps_p, dλ : 0,
-        'color': '#ff0000',
-    },
-    'kinematic-linear': {
-        'E' : E,
-        'Y' : lambda λ : Y0,
-        'dalpha': lambda alpha, deps_p, dλ : H_kin*deps_p,
-        'color': '#00b507',
-    },
-    'kinematic-armstrong-fredrick': {
-        'E' : E,
-        'Y' : lambda λ : Y0,
-        'dalpha' : lambda alpha, deps_p, dλ : H_kin*deps_p-dλ*b*alpha,
-        'color': '#ff9a01',
-    },
-    'mixed-linear': {
-        'E' : E,
-        'Y' : lambda λ : (Y0/H_iso+λ)*H_iso,
-        'dalpha': lambda alpha, deps_p, dλ : H_kin*deps_p,
-        'color': '#9501ff',
-    },
-    'mixed-armstrong-fredrick': {
-        'E' : E,
-        'Y' : lambda λ : (Y0/H_iso+λ)*H_iso,
-        'dalpha' : lambda alpha, deps_p, dλ : H_kin*deps_p-dλ*b*alpha,
-        'color': '#00c6c3',
-    }
-}
+from configs.materials import materials
 
 
-def HARDENING(eps,E,dalpha_F,Y_F):
+def hardening(eps,E,dalpha_F,Y_F):
     sig = np.zeros_like(eps)
     eps_p = np.zeros_like(eps)
     λ = np.zeros_like(eps)
@@ -99,7 +46,9 @@ def HARDENING(eps,E,dalpha_F,Y_F):
     
     return sig, alpha, Y
 
-
+# ---------------------------------------------
+# Thay can be used as a part of a DataSet calss
+# ----------------------------------------------
 
 def plot_responses(eps_list, sig_list, color_list=None):
 
@@ -129,24 +78,31 @@ def plot_responses(eps_list, sig_list, color_list=None):
     plt.show()
 
 
-def load_responses(mat_name,inp_type,inp_name,data_path=''):
-    return (
-        np.load(
-            osp.join(data_path,'input',inp_type,f'{inp_name}.npy'),
-            allow_pickle=True
-        ),
-        np.load(
-            osp.join(data_path,'output',mat_name,inp_type,f'{inp_name}.npy'),
-            allow_pickle=True
-        )
-    )
+def data_to_tensor(x:np.array):
+    return torch.tensor(
+        x.astype(np.float32),
+        dtype=torch.float32
+    ).unsqueeze(-1)
+
+
+def load_responses(mat_name,inp_type,inp_name,data_dir=''):
+    
+    data_dir = Path(data_dir)
+    
+    eps_path = data_dir / 'input' / inp_type / f'{inp_name}.npy'
+    sig_path = data_dir / 'output' / mat_name / inp_type / f'{inp_name}.npy'
+    
+    eps_list = np.load(eps_path,allow_pickle=True)
+    sig_list = np.load(sig_path,allow_pickle=True)
+
+    return data_to_tensor(eps_list), data_to_tensor(sig_list)
 
 
 if __name__ == '__main__':
     input_path = osp.join('data','input')
     output_path = osp.join('data','output')
 
-    for mat_name, mat in MATERIALS.items():
+    for mat_name, mat in materials.items():
         for inp_type in ['static','random']:
             for file in os.listdir(osp.join(input_path,inp_type)):
                 inp_name,_ = os.path.splitext(file)
@@ -158,7 +114,7 @@ if __name__ == '__main__':
 
                 # Calc responses
                 sig_list = np.array([
-                    HARDENING(
+                    hardening(
                         eps.astype(np.float32),
                         mat['E'],mat['dalpha'],mat['Y']
                     )[0]

@@ -1,0 +1,63 @@
+random:
+  
+  pd_ms:
+    len_seq: 150
+    amplitude: 0.2
+    power: 1.5
+    n_freqs: 100
+  
+  bl_ms:
+    general:
+      dt: 0.01
+      t_end: 1.5
+    baseline:
+      t_step: [0.2, 0.5]
+      amplitude: [-0.0075, 0.0072]
+    multisine:
+      n_freqs: [10, 20]
+      freq_min: 0.1
+      freq_max: 10
+      amplitude: [0.0075, 0.0175]
+      phase: [0, 6.28]
+  
+  gp:
+    dt: 0.01
+    n_ts: 150
+    n_cp: 15
+    amplitude: 0.05
+
+  rw:
+    n_steps: 150
+    deps_max: 0.015
+    smooth_kernel: 2
+
+static:
+  amplitude:
+    n_ts: 150
+    amplitude:
+      min: 0.05
+      max: 0.2
+      n: 4
+
+  cyclic:
+    n_ts: 150
+    amplitude: 0.2
+    n_cycles: 5
+
+  impulse:
+    n_ts: 150
+    mu: 0
+    sigma: 1
+
+  piecewise:
+    points: 
+      - 0
+      - 0.1
+      - -0.1
+      - 0.2
+      - 0
+    n_ts: 100
+
+  resolution:
+    n_ts: [2000]
+    amplitude: 0.2

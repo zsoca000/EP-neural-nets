@@ -11,7 +11,7 @@ from models.utils import MinMaxScaler, ErrorMetrics
 
 class EP_NN:
     
-    def __init__(self,k,p,q,incr,network: LSTM | MLP,seed=42):
+    def __init__(self,k,p,q,incr, network: LSTM | MLP,seed=42,):
         
         if incr and not k:
             raise ValueError(f'Incremental model with k=0 cannot be created')
@@ -35,8 +35,6 @@ class EP_NN:
         self.epochs = 0
         self.train_losses = []
         self.val_losses = []
-        self.loc_test_losses = []
-        self.glob_test_losses = []
     
 
     def calc_batch_size(self, seq_len):
@@ -169,6 +167,7 @@ class EP_NN:
         perm = torch.randperm(input.shape[0])
         return input[perm], output[perm]
         
+
     def preprocess(self,y,u): 
 
         y_tmp = self.y_scaler.transform(y) # (n_samples, seq_len, :)
@@ -185,6 +184,7 @@ class EP_NN:
 
         u_next = u_tmp[:, self.k:, :] # (n_samples, seq_len-k, :) 
 
+        # Sliding window
         u_prev = u_tmp.unfold(1, self.k, 1)[:, :-1, 0, :] # (n_samples, seq_len-k, k) TODO: should be (n_samples, seq_len-k, :, k) 
         y_prev = y_tmp.unfold(1, self.k, 1)[:, :-1, 0, :] # (n_samples, seq_len-k, k) TODO: should be (n_samples, seq_len-k, :, k) 
 
@@ -201,20 +201,14 @@ class EP_NN:
         # print(torch.any(u_prev == u_prev_OLD), torch.any(y_prev == y_prev_OLD))
 
         # Design input depending on model type
-        if isinstance(self.model, LSTM):
-            input = torch.cat([u_prev,u_next],dim=-1) # (n_samples, seq_len-k, k+1) TODO: should be (n_samples, seq_len-k, :, k+1) 
-        else: 
+        if isinstance(self.model, MLP):
             input = torch.cat([y_prev,u_prev,u_next],dim=-1) # (n_samples, seq_len-k, 2k+1) TODO: should be (n_samples, seq_len-k, :, 2k+1)
             input = input.reshape(-1, input.shape[-1]) # (n_samples*(seq_len-k), 2k+1) TODO: should be (n_samples*(seq_len-k), :, 2k+1)
             output = output.reshape(-1, output.shape[-1]) # (n_samples*(seq_len-k), 2k+1) TODO: should be (n_samples*(seq_len-k), :, 2k+1)
-
+        else: 
+            input = torch.cat([u_prev,u_next],dim=-1) # (n_samples, seq_len-k, k+1) TODO: should be (n_samples, seq_len-k, :, k+1) 
+            
         return input.to(self.device), output.to(self.device)
-
-    
-    def shuffle(self, input, output):
-        torch.manual_seed(self.seed)
-        perm = torch.randperm(input.shape[0])
-        return input[perm], output[perm]
 
 
     def predict(self,y_init,u):
@@ -282,30 +276,49 @@ class EP_NN:
 
 
     def glob_err(self,y_test:torch.tensor,u_test:torch.tensor,save_plot=False,path=''):
-        # Tennsors to the device for the inference
-        y_test = y_test.to(self.device)
-        u_test = u_test.to(self.device)
         
-        # Inference, by predicting from initial values
-        y_pred = self.predict(
-            y_test[:,:self.k,:], # y_init
-            u_test[:,:,:] # u
-        )
+        # We use just the initial values for inference
+        y_init = y_test[:,:self.k,:]  # (n_samples, k, 1)
 
-        # Back to RAM for error calculation
-        y_pred = y_pred.detach().cpu().numpy()
-        y_true = y_test.detach().cpu().numpy()
+        if isinstance(self.model, MLP):
+
+            # Tensors to the device for the inference
+            y_init = y_init.to(self.device)
+            u_test = u_test.to(self.device)
+            
+            # Inference, by predicting from initial values
+            y_pred = self.predict(y_init,u_test).detach().cpu().numpy()
         
-        # Plot the difference
-        if save_plot:
-            self.save_eval_plot(y_true,y_pred,path)
-        
+        else:
+            input_test, _ = self.preprocess(y_test,u_test)
+
+            # Inference
+            with torch.inference_mode():
+                output_test = self.model(input_test) # (n_samples, seq_len-k, 1)
+                output_test = output_test.detach().cpu()
+                
+            if not self.incr:
+                # Rescale to MPa
+                y = self.y_scaler.inverse_transform(output_test)
+                y_pred = torch.cat([y_init, y], dim=1)
+            else:
+                y_pred = y_init # (n_samples, k, 1)
+                for i in range(output_test.shape[1]): # seq_len-k
+                    # Get the i th increment
+                    dy = output_test[:,i:i+1,:] # (n_samples, 1, 1)
+                    # Rescale to MPa
+                    dy = self.dy_scaler.inverse_transform(dy) # (n_samples, 1, 1)
+                    y_next = y_pred[:,-1:,:] + dy
+                    y_pred = torch.cat([y_pred,y_next],dim=1)
+
+        if save_plot: self.save_eval_plot(y_test, y_pred, path=path)
+
         # Transform back to the network scale
-        y_true = self.y_scaler.transform(y_true)
+        y_test = self.y_scaler.transform(y_test)
         y_pred = self.y_scaler.transform(y_pred)
-
+        
         # Return error metrics
-        return ErrorMetrics(y_true,y_pred,self.y_scaler)
+        return ErrorMetrics(y_test,y_pred,self.y_scaler)
 
 
     def loc_err(self,y_test,u_test):
@@ -363,9 +376,6 @@ class EP_NN:
             'y_scaler': self.y_scaler.state_dict(),
             'u_scaler': self.u_scaler.state_dict(),
             'train_losses': self.train_losses,
-            'val_losses': self.val_losses,
-            'loc_test_losses': self.loc_test_losses,
-            'glob_test_losses': self.glob_test_losses,
             'epochs': self.epochs,
         }, path)
         print(f'{self.name} saved to {path}!')
@@ -427,11 +437,8 @@ def load_model(path:str) -> EP_NN:
     model.u_scaler.load_state_dict(checkpoint['u_scaler'])
     model.train_losses = checkpoint['train_losses'] if 'train_losses' in checkpoint else []
     model.val_losses = checkpoint['val_losses'] if 'val_losses' in checkpoint else []
-    model.loc_test_losses = checkpoint['loc_test_losses'] if 'loc_test_losses' in checkpoint else []
-    model.glob_test_losses = checkpoint['glob_test_losses'] if 'glob_test_losses' in checkpoint else []
     model.epochs = checkpoint['epochs'] if 'epochs' in checkpoint else 0
     
     return model
 
 
-    

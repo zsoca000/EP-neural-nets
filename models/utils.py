@@ -2,26 +2,15 @@ import torch
 import numpy as np
 
 
-def hhmmss(seconds: float) -> str:
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    seconds = int(seconds % 60)
-    return f"{hours}h {minutes}m {seconds}s"
-
-
-def data_to_tensor(x:np.array):
-    return torch.tensor(
-        x.astype(np.float32),
-        dtype=torch.float32
-    ).unsqueeze(-1)
-
-
 class MinMaxScaler:
     def __init__(self, x=None):
         if x is not None:
-            self.x_max, self.x_min = x.max(), x.min()
+            self.fit(self,x)
         else:
-            self.x_max, self.x_min = None, None
+            self.x_max, self.x_min = 1, -1
+
+    def fit(self,x):
+        self.x_max, self.x_min = x.max(), x.min()
 
     def transform(self, x):
         if isinstance(x, np.ndarray):
