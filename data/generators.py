@@ -1,6 +1,7 @@
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 import os.path as osp
 from pathlib import Path
 import os
@@ -400,6 +401,36 @@ class InputsSignals:
             mask = freqs >= 0
             ax.plot(freqs[mask],np.abs(X[mask]),label=f'Sample {i+1}')
         ax.grid()
+
+    def plot_histogram(self,ax, bins_time=100, bins_value=100, vmin=None, vmax=None,cmap=None):
+        n_signals, n_timepoints = self.u_list.shape
+        
+        times = np.arange(n_timepoints)
+
+        X = np.repeat(times[None, :], n_signals, axis=0).ravel()
+        Y = self.u_list.ravel()
+
+        H, xedges, yedges = np.histogram2d(
+            X, Y,
+            bins=[bins_time, bins_value],
+        )
+
+        H = H.T  # value bins on vertical axis
+        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+
+        im = ax.imshow(
+            H,
+            origin="lower",
+            aspect="auto",
+            extent=extent,
+            interpolation="nearest",
+            vmin=vmin, vmax=vmax,
+            cmap=cmap,
+            # norm=LogNorm(vmin=1, vmax=H.max())
+        )
+
+        # plt.colorbar(im, ax=ax).set_label("counts")
+
     
 
 

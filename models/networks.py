@@ -53,5 +53,28 @@ class LSTM(nn.Module):
     def forward(self, x):
         out, _ = self.lstm(x)
         return self.fc(out)
+    
 
+
+if __name__ == "__main__":
+    
+    k,p,q = 5,8,1
+
+    model = LSTM(input_size=k+1, output_size=1, p=p, q=q)
+    # print(model)
+    x = torch.randn(200, 150, k+1)
+
+    out, (h_n, c_n) = model.lstm(x)
+
+    print(out.shape)   
+    print(h_n.shape)   
+    print(c_n.shape)
+
+    total_params = sum(p.numel() for p in model.parameters())
+    lstm_params = sum(p.numel() for p in model.lstm.parameters())
+    fc_params = sum(p.numel() for p in model.fc.parameters())
+    print("Total parameters:", total_params)
+    print("LSTM params:", lstm_params)
+    print("FC params:", fc_params)
+    print("Total parameters:", 4 * (p * (k + 1) + p**2 + 2*p) + (q - 1) * 4 * (2 * p**2 + 2*p))
     

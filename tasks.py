@@ -67,15 +67,18 @@ def task1():
 def task2():
     
     # Model params
-    k,p,q,mode,network_name = 8,5,3,'incr','dir'
-
+    k,p,q,mode,network_name = 3,5,3,'incr','MLP'
+    
+    # Seeds for random restart
+    seeds = [42, 56, 17, 83, 29, 64, 90, 11, 75, 38]    
+    
     # Training sets
     train_inp_names = [
+        'pd_ms_42_200',
         'bl_ms_42_200',
         'combined_42_200',
         'gp_42_200',
-        'pd_ms_42_200',
-        'rw_42_200'
+        'rw_42_200',
     ]
 
     # Material behaviour (known model)
@@ -89,6 +92,9 @@ def task2():
     ]
 
     num_runs = len(train_inp_names) * len(mat_names)
+    
+    sum_time = 0.0
+    count = 0
 
     for mat_name in mat_names:
         for train_inp_name in train_inp_names:
@@ -98,7 +104,7 @@ def task2():
             trainer = Trainer(
                 mat_name=mat_name, 
                 inp_name=train_inp_name, 
-                config_path='models/train_config.json',
+                config_path='configs/train.yaml',
             )
 
             # Evaluator config
@@ -106,14 +112,18 @@ def task2():
                 mat_name=mat_name,
                 eval_sets = {
                     'static' : ['amplitude','cyclic','impulse','piecewise','resolution'],
-                    'random': train_inp_name,
+                    'random': train_inp_names,
                 }
             )
             
             tic = time.time()
 
             # Seek and train model
-            trainer.find_best_model(k,p,q,mode,network_name)
+            trainer.find_best_model(
+                k,p,q,mode,network_name,
+                seeds=seeds,
+                verbose=False,
+            )
             model_dir = trainer.save(save_dir='metrics')
 
             # Eval model
@@ -130,10 +140,8 @@ def task2():
             )
 
 
-
 if __name__ == '__main__':
     
-    task1()
     task2()
 
 

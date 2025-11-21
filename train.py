@@ -343,7 +343,6 @@ class Trainer:
     def exists(self, k,p,q, mode, network_name, check_dir='metrics'):
 
         parent_folder = Path(check_dir ,self.mat_name, self.inp_name)
-        
         # Try to find file with: net_name-mode-k-p-q
         prefix = f'{network_name}-{mode}-{k}-{p}-{q}'
         

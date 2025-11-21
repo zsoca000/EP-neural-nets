@@ -22,7 +22,7 @@ def hardening(eps,E,dalpha_F,Y_F):
     for i in range(eps.shape[0]-1):
         deps = (eps[i+1] - eps[i])
         
-        sig_trial = sig[i] + E*deps
+        sig_trial = sig[i] + E*deps # E * (eps[i+1] - eps_p[i])
         
         if abs(sig_trial - alpha[i]) - Y[i] <= 0: 
             deps_p = 0
@@ -42,7 +42,7 @@ def hardening(eps,E,dalpha_F,Y_F):
         λ[i+1] = λ[i] + dλ
         Y[i+1] = Y_F(λ[i+1])
         alpha[i+1] = alpha[i] + dalpha_F(alpha[i],deps_p,dλ)
-        sig[i+1] = sig_trial - E*deps_p
+        sig[i+1] = sig_trial - E*deps_p  # E *(eps[i+1] - eps_p[i+1])
     
     return sig, alpha, Y
 
@@ -50,23 +50,30 @@ def hardening(eps,E,dalpha_F,Y_F):
 # Thay can be used as a part of a DataSet calss
 # ----------------------------------------------
 
-def plot_responses(eps_list, sig_list, color_list=None):
+def plot_responses(eps_list, sig_list, c_list=None, alpha_list=None, lw_list=None, ls_list=None):
 
     fig = plt.figure(figsize=(8, 4),dpi=250)
+
     gs = GridSpec(2, 2, height_ratios=[1, 1])
     ax1 = fig.add_subplot(gs[:, 0])
     ax2 = fig.add_subplot(gs[0, 1])
     ax3 = fig.add_subplot(gs[1, 1])
     
     n = len(eps_list)
-    if color_list is None: 
-        color_list=['red']*n
+    if c_list is None: 
+        c_list=['red']*n
         alpha_list=[(i+1)/n for i in range(n)]
+    if lw_list is None:
+        lw_list=[1.5]*n
+    if ls_list is None:
+        ls_list=['-']*n
     
-    for i in range(n):
-        ax1.plot(eps_list[i],sig_list[i],lw=1.5,alpha=alpha_list[i],c=color_list[i])
-        ax2.plot(eps_list[i],lw=1.5,alpha=alpha_list[i],c=color_list[i])
-        ax3.plot(sig_list[i],lw=1.5,alpha=alpha_list[i],c=color_list[i])
+    plot_iter = zip(eps_list, sig_list, c_list, alpha_list, lw_list, ls_list)
+    
+    for eps, sig, c, alpha,  lw, ls in plot_iter:
+        ax1.plot(eps,sig,lw=lw,ls=ls,alpha=alpha,c=c)
+        ax2.plot(eps,lw=lw,ls=ls,alpha=alpha,c=c)
+        ax3.plot(sig, lw=lw,ls=ls,alpha=alpha,c=c)
 
     ax1.set_xlabel(r'$\varepsilon$', fontsize=18)
     ax2.set_xlabel(r'$n$', fontsize=18)

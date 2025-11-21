@@ -1,12 +1,14 @@
 random:
   
   pd_ms:
+    name: "PD-MS"
     len_seq: 150
     amplitude: 0.2
     power: 1.5
     n_freqs: 100
   
   bl_ms:
+    name: "BL-MS"
     general:
       dt: 0.01
       t_end: 1.5
@@ -21,15 +23,20 @@ random:
       phase: [0, 6.28]
   
   gp:
+    name: "GP"
     dt: 0.01
     n_ts: 150
     n_cp: 15
     amplitude: 0.05
 
   rw:
+    name: "RW"
     n_steps: 150
     deps_max: 0.015
     smooth_kernel: 2
+  
+  combined:
+    name: "Combined"
 
 static:
   amplitude:
