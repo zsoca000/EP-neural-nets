@@ -12,6 +12,35 @@ plt.rcParams.update({"text.usetex": True, "font.family": "Computer Modern"})
 from configs.materials import materials
 
 
+class SLS:
+    def __init__(self,tau,E0,E_inf):
+        self.tau = tau
+        self.E0 = E0
+        self.E_inf = E_inf
+
+    def sig(self,eps,t):
+        dt = t[1]-t[0]
+        pass
+
+class KelvinVoigt:
+    def __init__(self,E,eta):
+        self.E = E
+        self.eta = eta
+
+    def sig(self,eps,t):
+        dt = t[1]-t[0]
+        pass
+
+class Plastic:
+    def __init__(self,E,dalpha_func,Y_func):
+        self.E = E
+        self.dalpha_func = dalpha_func
+        self.Y_func = Y_func
+
+    def sig(self,eps,t):
+        pass
+
+
 def hardening(eps,E,dalpha_F,Y_F):
     sig = np.zeros_like(eps)
     eps_p = np.zeros_like(eps)
@@ -30,7 +59,7 @@ def hardening(eps,E,dalpha_F,Y_F):
         else:
             def eq(deps_p):
                 dλ = deps_p*sign(sig_trial)
-                ret  = abs(sig_trial - alpha[i] - dalpha_F(alpha[i],deps_p,dλ))
+                ret  = abs(sig_trial - alpha[i] - dalpha_F(alpha[i],deps_p,dλ)) # Talán hiba
                 ret -= E*dλ
                 ret -= Y_F(λ[i]+dλ)
                 return ret
@@ -50,9 +79,9 @@ def hardening(eps,E,dalpha_F,Y_F):
 # Thay can be used as a part of a DataSet calss
 # ----------------------------------------------
 
-def plot_responses(eps_list, sig_list, c_list=None, alpha_list=None, lw_list=None, ls_list=None):
+def plot_responses(eps_list, sig_list, c_list=None, alpha_list=None, lw_list=None, ls_list=None, dpi=250):
 
-    fig = plt.figure(figsize=(8, 4),dpi=250)
+    fig = plt.figure(figsize=(8, 4),dpi=dpi)
 
     gs = GridSpec(2, 2, height_ratios=[1, 1])
     ax1 = fig.add_subplot(gs[:, 0])
@@ -83,6 +112,8 @@ def plot_responses(eps_list, sig_list, c_list=None, alpha_list=None, lw_list=Non
     ax3.set_ylabel(r'$\sigma$', fontsize=18)
     plt.tight_layout()
     plt.show()
+
+    return fig, [ax1,ax2,ax3]
 
 
 def data_to_tensor(x:np.array):

@@ -1,0 +1,19 @@
+train:
+- bl_ms_42_200
+- pd_ms_42_200
+- gp_42_200
+- rw_42_200
+- combined_42_200
+eval:
+  rand:
+  - bl_ms_56_20
+  - pd_ms_56_20
+  - gp_56_20
+  - rw_56_20
+  - combined_56_20
+  crit:
+  - amplitude
+  - cyclic
+  - impulse
+  - resolution
+  - piecewise

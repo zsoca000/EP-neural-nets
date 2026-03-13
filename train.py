@@ -53,7 +53,7 @@ class Trainer:
     def load_data(self):
         
         u_list, y_list = load_responses(
-            self.mat_name, 'random', self.inp_name,
+            self.mat_name, 'train', self.inp_name,
             data_dir=self.data_dir
         )
 
@@ -261,20 +261,8 @@ class Trainer:
         torch.save(self.state_dict(), save_dir / 'model.pth')
         print(f'{self.model.name} saved to {save_dir / 'model.pth'}!')
         
-        self.load_data()
-        with open(save_dir / 'test_eval.json', 'w') as f:
-            json.dump(self.test_eval,f)
-
         return save_dir
-
     
-    @property
-    def test_eval(self):
-        return {
-            'global' : self.model.glob_err(self.y_test,self.u_test).dictionary,
-            'local' : self.model.loc_err(self.y_test,self.u_test).dictionary,
-        }
-
 
     def state_dict(self):
         return {

@@ -26,11 +26,14 @@ class RandomGenerator:
     def save_signals(self, n, folder_path=''):
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
+
+        dataset_name = f"{self.name}_{self.seed}_{n}"
         np.save(
-            folder_path / f"{self.name}_{self.seed}_{n}.npy",
+            folder_path / (dataset_name + '.npy'),
             np.array([self.signal for _ in range(n)], dtype=object),
             allow_pickle=True
         )
+        return dataset_name
 
 
 class BaselineMultisine(RandomGenerator):
@@ -212,11 +215,14 @@ class Combined(RandomGenerator):
 
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
+        dataset_name = f"{self.name}_{self.seed}_{n}"
         np.save(
-            folder_path / f'{self.name}_{self.seed}_{n}.npy',
+            folder_path / (dataset_name + '.npy'),
             np.array(signals,dtype=object),
             allow_pickle=True
         )
+
+        return dataset_name
 
 
 
@@ -236,19 +242,21 @@ class Amplitude:
             self.config['amplitude']['n']
         ):
             t = np.linspace(
-                0, 
-                2*np.pi, 
+                0, 2*np.pi, 
                 self.config['n_ts']
             )
             eps_list += [np.sin(t) * eps_max]
 
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
+        dataset_name = f"{self.name}"
         np.save(
-            folder_path / f'{self.name}.npy',
+            folder_path / (dataset_name + '.npy'),
             np.array(eps_list, dtype=object),
             allow_pickle=True
         )
+
+        return dataset_name
             
 
 class Cyclic:
@@ -269,11 +277,14 @@ class Cyclic:
         
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
+        dataset_name = f"{self.name}"
         np.save(
-            folder_path / f'{self.name}.npy',
+            folder_path / (dataset_name + '.npy'),
             eps.reshape(1, -1).astype(object),
             allow_pickle=True
         )
+
+        return dataset_name
 
 
 class Impulse:
@@ -297,12 +308,14 @@ class Impulse:
 
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
-
+        dataset_name = f"{self.name}"
         np.save(
-            folder_path / f'{self.name}.npy',
+            folder_path / (dataset_name + '.npy'),
             eps.reshape(1, -1).astype(object),
             allow_pickle=True
         )
+
+        return dataset_name
 
 
 class Resolution:
@@ -323,11 +336,14 @@ class Resolution:
 
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
+        dataset_name = f"{self.name}"
         np.save(
-            folder_path / f'{self.name}.npy',
+            folder_path / (dataset_name + '.npy'),
             np.array(eps_list, dtype=object),
             allow_pickle=True
         )
+
+        return dataset_name
     
 
 class PieceWise:
@@ -343,14 +359,17 @@ class PieceWise:
         
         folder_path = Path(folder_path)
         folder_path.mkdir(parents=True, exist_ok=True)
+        dataset_name = f"{self.name}"
         np.save(
-            folder_path / f'{self.name}.npy',
+            folder_path / (dataset_name + '.npy'),
             np.concatenate([
                 np.linspace(points[i],points[i+1],n_ts)
                 for i in range(len(points)-1)
             ]).reshape(1, -1).astype(object),
             allow_pickle=True
         )
+
+        return dataset_name
 
 
 class InputsSignals:
@@ -431,45 +450,5 @@ class InputsSignals:
 
         # plt.colorbar(im, ax=ax).set_label("counts")
 
-    
-
-
-RANDOM_GEN_REGISTRY = [
-    BaselineMultisine,
-    PowerDecayMultisine,
-    GaussianProcess,
-    RandomWalk,
-    Combined
-]
-
-STATIC_GEN_REGISTRY = [
-    Amplitude,
-    Cyclic,
-    Impulse,
-    Resolution,
-    PieceWise,
-]
-
-if __name__ == '__main__':
-    
-    # Defines
-    n = 200
-    seed = 42
-    config_path = Path("configs","generators.yaml")
-    input_dir  = Path('data','input')
-
-    # Load config
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-
-    # Generate random data sets
-    for Generator in RANDOM_GEN_REGISTRY:
-        generator = Generator(config=config,seed=seed)
-        generator.save_signals(n=n, folder_path=Path(input_dir,'random'))
-
-    # Generate static data sets
-    for Generator in STATIC_GEN_REGISTRY:
-        generator = Generator(config=config)
-        generator.save_signals(folder_path=Path(input_dir,'static'))
 
     
