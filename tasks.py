@@ -6,6 +6,7 @@ from pathlib import Path
 from itertools import product
 
 import data.generators as gen
+from data.data_set import DataSet
 from data.materials import hardening
 from configs.materials import materials
 
@@ -16,8 +17,9 @@ from utils.time import hhmmss
 
 ROOT_DIR = Path("")
 
-DATA_DIR = ROOT_DIR / 'data'
+SAVE_DIR = ROOT_DIR / 'metrics'
 CONFIG_DIR = ROOT_DIR / 'configs'
+DATA_DIR = ROOT_DIR / 'data'
 
 INPUT_DIR = DATA_DIR / "input"
 OUTPUT_DIR = DATA_DIR / "output"
@@ -116,23 +118,30 @@ def data_set_names(): # Load the names of the generated input sets
 
 def task1(): # Parameter sweeping
 
+    # Observed material and input set
     mat_name = 'isotropic-swift'
     train_inp_name = 'pd_ms_42_200'
+
+    # Eval set names
     eval_inp_names = data_set_names()['eval']['crit']
     eval_inp_names += data_set_names()['eval']['crit']
 
+    
+    train_set = DataSet(mat_name, 'train', train_inp_name)
+    
+    eval_sets = [
+        DataSet(mat_name, 'eval', inp_name)
+        for inp_name in eval_inp_names
+    ]
+    
     # Trainer config
     trainer = Trainer(
-        mat_name=mat_name, 
-        inp_name=train_inp_name, 
+        dataset=train_set, 
         config_path='configs/train.yaml',
     )
 
     # Evaluator config
-    evaluator = Evaluator(
-        mat_name=mat_name,
-        inp_names=eval_inp_names,
-    )
+    evaluator = Evaluator(datasets=eval_sets)
     
     # Model space
     model_space = [
@@ -158,7 +167,7 @@ def task1(): # Parameter sweeping
                 seeds = [42, 56, 17, 83, 29, 64, 90, 11, 75, 38],
             )
             
-            model_dir = trainer.save(save_dir='metrics')
+            model_dir = trainer.save(save_dir=SAVE_DIR)
             evaluator.evaluate(model_dir, overwrite=False)
 
             toc = time.time()
@@ -172,7 +181,7 @@ def task1(): # Parameter sweeping
             )
 
 
-def task2():
+def task2(): # Fit the same surrogate model, to all target behaviour 
     
     # Model params
     k,p,q,mode,network_name = 3,5,3,'incr','MLP'
@@ -186,7 +195,11 @@ def task2():
     # Eval sets
     eval_inp_names = data_set_names()['eval']['crit']
     eval_inp_names += data_set_names()['eval']['crit']
-    
+    eval_sets = [
+        DataSet(mat_name, 'eval', inp_name)
+        for inp_name in eval_inp_names
+    ]
+
     # Targets
     mat_names = materials.keys()
 
@@ -198,18 +211,15 @@ def task2():
     for mat_name in mat_names:
         for train_inp_name in train_inp_names:
             
+            train_set = DataSet(mat_name, 'train', train_inp_name)
             # Trainer config
             trainer = Trainer(
-                mat_name=mat_name, 
-                inp_name=train_inp_name, 
+                dataset=train_set,
                 config_path='configs/train.yaml',
             )
 
             # Evaluator config
-            evaluator = Evaluator(
-                mat_name=mat_name,
-                inp_names=eval_inp_names,
-            )
+            evaluator = Evaluator(datasets=eval_sets)
             
             tic = time.time()
 
@@ -219,7 +229,7 @@ def task2():
                 seeds=seeds,
                 verbose=False,
             )
-            model_dir = trainer.save(save_dir='metrics')
+            model_dir = trainer.save(save_dir=SAVE_DIR)
 
             # Eval model
             evaluator.evaluate(model_dir, overwrite=False)
@@ -234,23 +244,26 @@ def task2():
                 hhmmss(avg_time * (num_runs - count))
             )
 
-def eval_all():
+def eval_all(): # Iterate through all trained models and evaluate them on all eval sets
     
     train_inp_names = data_set_names()['train']
-    eval_inp_names = data_set_names()['eval']
-    eval_inp_names += data_set_names()['eval']
+    eval_inp_names = data_set_names()['eval']['rand']
+    eval_inp_names += data_set_names()['eval']['crit']
     mat_names = materials.keys()
 
-
     for mat_name in mat_names:
+
+        datasets = [
+            DataSet(mat_name, inp_type, inp_name)
+            for inp_type, names in [('eval', eval_inp_names), ('train', train_inp_names)]
+            for inp_name in names
+        ]
+
         for train_inp_name in train_inp_names:
             
-            evaluator = Evaluator(
-                mat_name=mat_name,
-                inp_names= eval_inp_names,
-            )
+            evaluator = Evaluator(datasets=datasets)
             
-            model_folder = Path('metrics',mat_name,train_inp_name)
+            model_folder = SAVE_DIR / mat_name / train_inp_name
 
             for model_dir in model_folder.iterdir():
                 
@@ -308,7 +321,7 @@ def check_change():
 
 
 if __name__ == '__main__':
-    
-    task0()
+
+    eval_all()
 
     

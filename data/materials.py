@@ -123,57 +123,5 @@ def data_to_tensor(x:np.array):
     ).unsqueeze(-1)
 
 
-def load_responses(mat_name,inp_type,inp_name,data_dir=''):
-    
-    data_dir = Path(data_dir)
-    
-    eps_path = data_dir / 'input' / inp_type / f'{inp_name}.npy'
-    sig_path = data_dir / 'output' / mat_name / inp_type / f'{inp_name}.npy'
-    
-    eps_list = np.load(eps_path,allow_pickle=True)
-    sig_list = np.load(sig_path,allow_pickle=True)
-
-    return data_to_tensor(eps_list), data_to_tensor(sig_list)
-
-
-if __name__ == '__main__':
-    input_path = osp.join('data','input')
-    output_path = osp.join('data','output')
-
-    for mat_name, mat in materials.items():
-        for inp_type in ['static','random']:
-            for file in os.listdir(osp.join(input_path,inp_type)):
-                inp_name,_ = os.path.splitext(file)
-                log = f'Response of {mat_name} for {inp_name}'
-                eps_list = np.load(
-                    osp.join(input_path,inp_type,file),
-                    allow_pickle=True
-                )
-
-                # Calc responses
-                sig_list = np.array([
-                    hardening(
-                        eps.astype(np.float32),
-                        mat['E'],mat['dalpha'],mat['Y']
-                    )[0]
-                    for eps in tqdm(eps_list,desc=log)
-                ],dtype=object)
-
-                # Where to save the response?
-                save_folder = osp.join(
-                    output_path,
-                    mat_name,
-                    inp_type,
-                )
-                if not osp.exists(save_folder):
-                    os.makedirs(save_folder)
-
-                # Save response
-                np.save(
-                    osp.join(save_folder,file),
-                    sig_list,
-                    allow_pickle=True,
-                )
-
 
  

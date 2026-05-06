@@ -5,13 +5,13 @@ from train import Trainer
 from models.models import SeqMLP, SeqLSTM
 from models.utils import ErrorMetrics
 from data.materials import load_responses
+from data.data_set import DataSet
 
 
 class Evaluator:
     
-    def __init__(self, mat_name:str, inp_names:list[str]):
-        self.mat_name = mat_name
-        self.inp_names = inp_names
+    def __init__(self, datasets:list[DataSet]):
+        self.datasets = datasets
         self.eval_metrics = {}
 
     
@@ -28,13 +28,12 @@ class Evaluator:
             state_dict = Trainer.load_state_dict_from_path(model_path)
             model = Trainer.load_model(state_dict)
 
-            for inp_name in self.inp_names:
+            for dataset in self.datasets:
                 
-                if verbose: 
-                    print(f'Evaluate {load_dir} on {inp_name}')
+                if verbose: print(f'Evaluate {load_dir} on {dataset.inp_name}')
 
-                self.eval_metrics[inp_name] = self.eval_model(
-                    model, self.mat_name, inp_name,
+                self.eval_metrics[dataset.inp_name] = self.eval_model(
+                    model, dataset,
                 )
                     
         
@@ -45,14 +44,11 @@ class Evaluator:
     @staticmethod
     def eval_model(
         model:SeqMLP|SeqLSTM, 
-        mat_name:str, inp_name:str, 
+        dataset:DataSet
     ) -> tuple[ErrorMetrics,ErrorMetrics]:
 
-
-        u_list, y_list = load_responses(
-            mat_name, 'eval' ,inp_name,
-            data_dir='data'
-        )
+        u_list = dataset.u_list
+        y_list = dataset.y_list
         
         glob_err = model.glob_err(y_list,u_list)
         loc_err = model.loc_err(y_list,u_list)
@@ -61,38 +57,6 @@ class Evaluator:
             'global' : glob_err.dictionary,
             'local' : loc_err.dictionary
         }
-    
-
-
-if __name__ == '__main__':
-    
-    random_evals = [
-        'bl_ms_56_20',
-        'combined_56_20',
-        'gp_56_20',
-        'pd_ms_56_20',
-        'rw_56_20',
-    ]
-
-    critical_evals = [
-        'amplitude',
-        'cyclic',
-        'impulse',
-        'piecewise',
-        'resolution',
-    ]
-
-    evaluator = Evaluator(
-        mat_name='isotropic-swift',
-        inp_names= random_evals + critical_evals,
-    )
-
-    evaluator.evaluate(
-        load_dir='/mnt/c/users/rdsup/desktop/EP-neural-nets/metrics/isotropic-swift/bl_ms_42_200/MLP-incr-3-5-3-90',
-        verbose=True,
-        overwrite=True,
-    )
-
     
 
     

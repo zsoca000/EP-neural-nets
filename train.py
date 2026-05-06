@@ -5,7 +5,7 @@ import torch.nn as nn
 from pathlib import Path
 
 from models.models import SeqLSTM, SeqMLP, get_model
-from data.materials import load_responses
+from data.data_set import DataSet
 from sklearn.model_selection import train_test_split
 
 class ModelNotLoadedError(RuntimeError):
@@ -14,11 +14,13 @@ class ModelNotLoadedError(RuntimeError):
 
 class Trainer:
     
-    def __init__(self, mat_name, inp_name, config_path='configs/train.yaml',data_dir='data'):
+    def __init__(
+        self,
+        dataset: DataSet,
+        config_path='configs/train.yaml',
+    ):
         
-        self.mat_name = mat_name
-        self.inp_name = inp_name
-        self.data_dir = data_dir
+        self.dataset = dataset
         self.model = None
 
         with open(config_path, "r") as f:
@@ -52,14 +54,9 @@ class Trainer:
       
     def load_data(self):
         
-        u_list, y_list = load_responses(
-            self.mat_name, 'train', self.inp_name,
-            data_dir=self.data_dir
-        )
-
         # Split the incoming data
         y_train, y_tmp, u_train, u_tmp = train_test_split(
-            y_list, u_list, test_size=0.3, random_state=42
+            self.dataset.y_list, self.dataset.u_list, test_size=0.3, random_state=42
         )
         y_val, self.y_test, u_val, self.u_test = train_test_split(
             y_tmp, u_tmp, test_size=0.5, random_state=42
@@ -191,14 +188,14 @@ class Trainer:
         # If we use the new implementation, we can check
         if "mat_name" in state_dict and "inp_name" in state_dict:
             
-            if self.mat_name != state_dict["mat_name"]:
+            if self.dataset.mat_name != state_dict["mat_name"]:
                 raise RuntimeError(
-                    f"Trainer was defined for '{self.mat_name}', "
+                    f"Trainer was defined for '{self.dataset.mat_name}', "
                     f"but tried to load a state for '{state_dict['mat_name']}'."
                 )
-            if self.inp_name != state_dict["inp_name"]:
+            if self.dataset.inp_name != state_dict["inp_name"]:
                 raise RuntimeError(
-                    f"Trainer was defined for '{self.inp_name}', "
+                    f"Trainer was defined for '{self.dataset.inp_name}', "
                     f"but tried to load a state for '{state_dict['inp_name']}'."
                 )
         
@@ -342,17 +339,4 @@ class Trainer:
 
         return folder_path is not None, folder_path
 
-
-    
-if __name__ == '__main__':
-    
-    trainer = Trainer('isotropic-swift','pd_ms_42_200')
-    
-    trainer.find_best_model(
-        5,2,2,'dir','MLP',
-        seeds=[42, 56, 17, 83, 29],
-        check_dir='tmp2'
-    )
-
-    trainer.save(save_dir='tmp2')
 

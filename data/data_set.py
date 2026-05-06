@@ -6,28 +6,27 @@ class DataSet:
     
     def __init__(self,mat_name,inp_type,inp_name,data_path='data'):
         
+        # Save props
         self.mat_name = mat_name
         self.inp_type = inp_type
         self.inp_name = inp_name
+        
+        # Find the data files
+        data_path = Path(data_path)
+        self.input_path = data_path / 'input' / inp_type / f'{self.inp_name}.npy'
+        self.output_path = data_path / 'output'  / mat_name / inp_type / f'{self.inp_name}.npy'
 
-        eps_list = self.load_eps(data_path)
-        sig_list = self.load_sig(data_path)
-
-        self.u_list = self.data_to_tensor(eps_list)
-        self.y_list = self.data_to_tensor(sig_list)
-
-
-    def load_eps(self,data_path:str)->np.array:
-        return np.load(
-            Path(data_path,'input',self.inp_type,f'{self.inp_name}.npy'),
-            allow_pickle=True
-        )
+    @property
+    def u_list(self):
+        ret = np.load(self.input_path, allow_pickle=True)
+        ret = self.data_to_tensor(ret)
+        return ret
     
-    def load_sig(self,data_path:str)->np.array:
-        return np.load(
-            Path(data_path,'output',self.mat_name,self.inp_type,f'{self.inp_name}.npy'),
-            allow_pickle=True
-        )
+    @property
+    def y_list(self):
+        ret = np.load(self.output_path, allow_pickle=True)
+        ret = self.data_to_tensor(ret)
+        return ret
 
     @staticmethod
     def data_to_tensor(x:np.array):
