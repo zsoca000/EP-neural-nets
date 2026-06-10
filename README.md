@@ -50,7 +50,7 @@ EP-neural-nets/
 We cover six classical hardening laws ($m_1$ to $m_6$) implemented via custom radial return algorithms:
 * **Isotropic hardening**: Linear ($m_1$), Swift non-linear ($m_2$)
 * **Kinematic hardening**: Linear/Prager ($m_3$), Non-linear Armstrong–Frederick ($m_4$)
-* **Mixed hardening**: Linear ($m_5$), Swift + Armstrong–Frederick non-linear ($m_6$)
+* **Mixed hardening**: Linear + Linear ($m_5$), Linear + Armstrong–Frederick non-linear ($m_6$)
 
 ### Loading History Generators
 * **Stochastic (Training/Eval)**: Random Walk (RW), Gaussian Process (GP), Power Decay Multisine (PD-MS), Baseline Multisine (BL-MS)
