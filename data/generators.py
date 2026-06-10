@@ -1,12 +1,31 @@
-import yaml
+"""
+EP-Neural-Nets: Stochastic and Critical Loading History Generators
+
+This module contains various data generators for creating strain loading 
+histories. It implements both the stochastic generators used for training 
+(Random Walk, Gaussian Process, Power Decay Multisine, Baseline Multisine) 
+and the deterministic critical scenarios used for adversarial testing 
+(amplitude, cyclic, impulse, resolution, piecewise).
+
+Key Components:
+---------------
+* RandomGenerator (base)  - Base class for all stochastic generators managing config, 
+                            seeds, and output saving (.npy).
+* BaselineMultisine       - Generates smooth baseline trajectories combined with sinusoidal components.
+* PowerDecayMultisine     - Generates signals with power-law decaying frequency amplitudes.
+* GaussianProcess         - Interpolates random control points using a Gaussian Process Regressor.
+* RandomWalk              - Creates smoothed, envelope-modulated random walk sequences.
+* Amplitude/Cyclic/...    - Critical loading profiles to test extrapolation and numerical drift.
+* InputsSignals           - Plotting and statistical summary utility to evaluate input distributions.
+"""
+
+
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 import os.path as osp
 from pathlib import Path
 import os
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+from sklearn.gaussian_process.kernels import RBF
 
 
 
@@ -186,43 +205,6 @@ class RandomWalk(RandomGenerator):
         eps_smooth = gaussian_filter1d(eps, sigma=smooth_kernel)
 
         return eps_smooth - eps_smooth[0]
-
-
-class Combined(RandomGenerator):
-    
-    name = 'combined'
-    
-    def __init__(self, config, seed=42):
-
-        super().__init__(config, seed)
-
-        self.child_gens = [
-            BaselineMultisine, 
-            PowerDecayMultisine, 
-            GaussianProcess, 
-            RandomWalk
-        ]
-    
-    def save_signals(self,n,folder_path=''):
-        
-        signals = []
-
-        for GEN in self.child_gens:
-            generator = GEN(config=self.config, seed=self.seed)
-            signals.extend([generator.signal for _ in range(n//4)])
-        
-        self.rng.shuffle(signals)
-
-        folder_path = Path(folder_path)
-        folder_path.mkdir(parents=True, exist_ok=True)
-        dataset_name = f"{self.name}_{self.seed}_{n}"
-        np.save(
-            folder_path / (dataset_name + '.npy'),
-            np.array(signals,dtype=object),
-            allow_pickle=True
-        )
-
-        return dataset_name
 
 
 

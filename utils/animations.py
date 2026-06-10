@@ -1,3 +1,10 @@
+"""
+EP-Neural-Nets: Animation Utilities
+This module provides utility functions to compile a sequence of training 
+or response plot frames (PNG images) from a folder into a single MP4 video 
+for visual training progress analysis.
+"""
+
 import cv2
 import os
 from tqdm import tqdm

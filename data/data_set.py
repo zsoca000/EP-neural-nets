@@ -1,3 +1,26 @@
+"""
+EP-Neural-Nets: Dataset Handler and Loader
+
+This module defines the DataSet class, which serves as a unified interface 
+for loading and managing elastoplastic time-series data. It maps specific 
+combinations of loading histories and material models to their corresponding 
+input (strain), output (stress), and state files, providing lazy-loading 
+access directly as PyTorch float32 tensors.
+
+Key Components:
+---------------
+* DataSet (class) - Represents a target behavior dataset, encapsulating path resolutions 
+                    and properties for inputs (u), outputs (y), and state vectors (x).
+
+Key Methods/Properties:
+-----------------------
+* u_list (property) - Loads and returns the input strain histories as a PyTorch tensor (N, T, 1).
+* y_list (property) - Loads and returns the output stress responses as a PyTorch tensor (N, T, 1).
+* x_list (property) - Loads and returns the internal material state variables (gamma, eps_p, alpha) 
+                      as a PyTorch tensor (N, T, 3).
+* data_to_tensor()  - Utility method to cast NumPy arrays into PyTorch float32 tensors.
+"""
+
 import torch
 from pathlib import Path
 import numpy as np

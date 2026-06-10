@@ -1,6 +1,27 @@
+"""
+EP-Neural-Nets: Training Pipeline and Model Selection
+This module defines the Trainer class, which manages data preprocessing, 
+splitting (train/validation/test), training epochs with early stopping, 
+and model checkpoint saving/loading. It also handles the multi-seed 
+robustness search to find the optimal initialization for any network configuration.
+Key Components:
+---------------
+* Trainer (class)      - Implements PyTorch training loops, learning rate scheduling, 
+                         validation-based early stopping, and state dictionary management.
+* ModelNotLoadedError - Custom exception raised when trying to save an unitialized model.
+Key Methods of Trainer:
+-----------------------
+* train()            - Orchestrates the full training loop on a given model.
+* find_best_model()  - Sweeps across a list of random initialization seeds, 
+                       trains each candidate, and loads the best-performing weights 
+                       based on the global validation/test error.
+* save() / load()    - Serializes and deserializes model weights, optimizer/scheduler 
+                       states, and preprocessor scaling parameters.
+"""
+
+
 import torch
 import yaml
-import json
 import torch.nn as nn
 from pathlib import Path
 

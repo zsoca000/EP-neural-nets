@@ -1,3 +1,25 @@
+"""
+EP-Neural-Nets: Task Orchestrator for Elastoplastic Surrogate Modeling
+This module orchestrates the data generation, hyperparameter sweep (grid search),
+cross-material training, and final evaluation of neural network surrogates 
+for 1D rate-independent elastoplasticity.
+Key Functions:
+--------------
+* generate_data()               - Generates stochastic (RW, GP, PD-MS, BL-MS) and 
+                                critical loading histories, and computes reference 
+                                analytical stress responses (formerly task0).
+* run_grid_search()             - Executes the hyperparameter sweep across 184 network 
+                                configurations (AR-MLP, LSTM) on Swift hardening (formerly task1).
+* run_cross_material_training() - Trains the optimized surrogate model (AR-MLP 3-5-3) 
+                                across all six constitutive models (formerly task2).
+* eval_all()                    - Evaluates all trained configurations on all evaluation 
+                                datasets for cross-generator robustness analysis.
+Usage:
+------
+Run this script directly to execute the default main task (currently eval_all):
+    python tasks.py
+"""
+
 import time
 import yaml
 import numpy as np
@@ -25,7 +47,8 @@ INPUT_DIR = DATA_DIR / "input"
 OUTPUT_DIR = DATA_DIR / "output"
 STATES_DIR = DATA_DIR / "states"
 
-def task0(): # Generate input signals
+def generate_data():
+    """ Create all of the input sets, and calculate the responses for all materials and all input sets."""
     
     train_dir = INPUT_DIR / 'train'
     eval_dir = INPUT_DIR / 'eval'
@@ -41,7 +64,6 @@ def task0(): # Generate input signals
         gen.PowerDecayMultisine,
         gen.GaussianProcess,
         gen.RandomWalk,
-        gen.Combined,
     ]
     
     critical_gen_classes = [
@@ -129,16 +151,18 @@ def task0(): # Generate input signals
                     states_list, allow_pickle=True,
                 )
 
-def data_set_names(): # Load the names of the generated input sets
+def data_set_names():
+    """Load the names of the generated input sets from the yaml file."""
     data_dict_path = DATA_DIR / 'data_sets.yaml'
     if not data_dict_path.exists():
-        raise FileNotFoundError(f"{data_dict_path} not found. Please run task0() to generate the input sets.")
+        raise FileNotFoundError(f"{data_dict_path} not found. Please run generate_data() to generate the input sets.")
     
     with open(DATA_DIR / 'data_sets.yaml', 'r') as file:
         return yaml.safe_load(file)
     
 
-def task1(): # Parameter sweeping
+def run_grid_search():
+
 
     # Observed material and input set
     mat_name = 'isotropic-swift'
@@ -203,7 +227,7 @@ def task1(): # Parameter sweeping
             )
 
 
-def task2(): # Fit the same surrogate model, to all target behaviour 
+def run_cross_material_training(): 
     
     # Model params
     k,p,q,mode,network_name = 3,5,3,'incr','MLP'
@@ -266,7 +290,8 @@ def task2(): # Fit the same surrogate model, to all target behaviour
                 hhmmss(avg_time * (num_runs - count))
             )
 
-def eval_all(): # Iterate through all trained models and evaluate them on all eval sets
+def eval_all():
+    """Iterate through all trained models and evaluate them on all eval sets"""
     
     train_inp_names = data_set_names()['train']
     eval_inp_names = data_set_names()['eval']['rand']
@@ -294,52 +319,6 @@ def eval_all(): # Iterate through all trained models and evaluate them on all ev
                 evaluator.evaluate(model_dir, overwrite=True, verbose=True)
                 (model_dir / 'test_eval.json').unlink(missing_ok=True)
                 
-
-def check_change():
-    # CHECK OLD VS NEW INPUTS
-    input_dir = Path("data", "input")
-
-    train_input_dir = input_dir / 'train'
-    eval_input_dir = input_dir / 'eval'
-    random_input_dir = input_dir / 'random'
-    static_input_dir = input_dir / 'static'
-
-    input_changes = []
-    for file in random_input_dir.iterdir():
-        eps_list1 = np.load(file, allow_pickle=True)
-        eps_list2 = np.load(random_input_dir / file.name, allow_pickle=True)
-        input_changes += [np.any(eps_list1 != eps_list2)]
-
-    for file in static_input_dir.iterdir():
-        eps_list1 = np.load(file, allow_pickle=True)
-        eps_list2 = np.load(eval_input_dir / file.name, allow_pickle=True)
-        input_changes += [np.any(eps_list1 != eps_list2)]
-    
-    print(input_changes)
-
-    # CHECK OLD VS NEW OUTPUTS
-    output_dir = Path("data", "output")
-    material_names = materials.keys()
-    
-    output_changes = []
-    for mat_name in material_names:
-        train_output_dir = output_dir / mat_name / 'train'
-        eval_output_dir = output_dir / mat_name / 'eval'
-        random_output_dir = output_dir / mat_name / 'random'
-        static_output_dir = output_dir / mat_name / 'static'
-
-        for file in random_input_dir.iterdir():
-            eps_list1 = np.load(file, allow_pickle=True)
-            eps_list2 = np.load(random_input_dir / file.name, allow_pickle=True)
-            output_changes += [np.any(eps_list1 != eps_list2)]
-
-        for file in static_input_dir.iterdir():
-            eps_list1 = np.load(file, allow_pickle=True)
-            eps_list2 = np.load(eval_input_dir / file.name, allow_pickle=True)
-            output_changes += [np.any(eps_list1 != eps_list2)]
-
-    print(output_changes)
-
 
 
 if __name__ == '__main__':

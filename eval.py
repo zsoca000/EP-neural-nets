@@ -1,3 +1,24 @@
+"""
+EP-Neural-Nets: Evaluation Pipeline
+
+This module defines the Evaluator class, which handles the evaluation of 
+trained surrogate models. It runs the models on various evaluation datasets, 
+computing both local (one-step-ahead) and global (recursive, free-running) 
+performance metrics, and serializes the results to JSON.
+
+Key Components:
+---------------
+* Evaluator (class) - Manages the loading of saved checkpoints and iterates 
+                      over test datasets to compute and save error metrics.
+
+Key Methods of Evaluator:
+-------------------------
+* evaluate()   - Checks if evaluation has already been done, loads the model, 
+                 runs evaluation on all specified datasets, and saves the metrics.
+* eval_model() - Static method that evaluates a single model instance on a single 
+                 dataset, computing both local and global ErrorMetrics.
+"""
+
 import json
 
 from pathlib import Path

@@ -1,44 +1,28 @@
+"""
+EP-Neural-Nets: Analytical Constitutive Model Solvers
+
+This module provides the numerical solvers for rate-independent elastoplastic 
+constitutive equations. It implements the radial return mapping (plastic corrector) 
+algorithm using root-finding solvers to compute stress responses and internal 
+state updates (hardening variables) from strain histories.
+
+Key Components:
+---------------
+* hardening()      - Main solver function implementing 1D elastoplasticity. It supports 
+                     any combination of isotropic (linear, Swift) and kinematic 
+                     (Prager, Armstrong-Frederick) hardening rules.
+* plot_responses() - Visualization utility that plots stress-strain hysteresis loops, 
+                     strain-step, and stress-step history diagrams using LaTeX notation.
+"""
+
+
 import torch
-import os
 import numpy as np
-from pathlib import Path
 from scipy.optimize import root
 from numpy import sign
-from tqdm import tqdm
-import os.path as osp
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 plt.rcParams.update({"text.usetex": True, "font.family": "Computer Modern"})
-from configs.materials import materials
-
-
-class SLS:
-    def __init__(self,tau,E0,E_inf):
-        self.tau = tau
-        self.E0 = E0
-        self.E_inf = E_inf
-
-    def sig(self,eps,t):
-        dt = t[1]-t[0]
-        pass
-
-class KelvinVoigt:
-    def __init__(self,E,eta):
-        self.E = E
-        self.eta = eta
-
-    def sig(self,eps,t):
-        dt = t[1]-t[0]
-        pass
-
-class Plastic:
-    def __init__(self,E,dalpha_func,Y_func):
-        self.E = E
-        self.dalpha_func = dalpha_func
-        self.Y_func = Y_func
-
-    def sig(self,eps,t):
-        pass
 
 
 def hardening(eps,E,dalpha_F,Y_F):
@@ -75,9 +59,6 @@ def hardening(eps,E,dalpha_F,Y_F):
     
     return sig, λ, eps_p, alpha
 
-# ---------------------------------------------
-# Thay can be used as a part of a DataSet calss
-# ----------------------------------------------
 
 def plot_responses(eps_list, sig_list, c_list=None, alpha_list=None, lw_list=None, ls_list=None, dpi=250):
 
@@ -115,12 +96,6 @@ def plot_responses(eps_list, sig_list, c_list=None, alpha_list=None, lw_list=Non
 
     return fig, [ax1,ax2,ax3]
 
-
-def data_to_tensor(x:np.array):
-    return torch.tensor(
-        x.astype(np.float32),
-        dtype=torch.float32
-    ).unsqueeze(-1)
 
 
 

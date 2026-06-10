@@ -1,5 +1,23 @@
+"""
+EP-Neural-Nets: Sequence Models and Preprocessing Wrappers
+This module provides high-level wrappers for sequence models used in 
+elastoplastic surrogate modeling. It defines the preprocessor for input/output 
+scaling and sliding-window preparation, as well as the base class and concrete 
+implementations for autoregressive rollout simulations (SeqMLP, SeqLSTM).
+Key Components:
+---------------
+* Preprocessor  - Handles scaling (MinMaxScaler) for strain, stress, and stress 
+                  increments, and structures sliding-window historical inputs.
+* SeqModelBase  - Abstract base class implementing local and global error computation 
+                  and common utility properties.
+* SeqMLP        - High-level MLP model implementing step-by-step autoregressive rollout 
+                  for local (one-step) and recursive global forecasting.
+* SeqLSTM       - High-level LSTM model implementing sequence-to-sequence rollout 
+                  for both direct and incremental prediction modes.
+* get_model()   - Factory function to easily instantiate SeqMLP or SeqLSTM models.
+"""
+
 import torch
-from torch import nn
 
 from models.networks import LSTM, MLP
 from models.utils import MinMaxScaler, ErrorMetrics

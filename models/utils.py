@@ -1,3 +1,19 @@
+"""
+EP-Neural-Nets: Scaling and Error Metrics Utilities
+
+This module provides essential math and data utilities for model preprocessing 
+and performance evaluation. It contains a MinMaxScaler tailored for PyTorch 
+and NumPy arrays, and an ErrorMetrics class that calculates local/global errors.
+
+Key Components:
+---------------
+* MinMaxScaler - Custom Min-Max scaling preprocessor supporting state serialization 
+                 (state_dict) and bidirectional numpy/tensor data conversions.
+* ErrorMetrics - Computes mathematical evaluation metrics: Mean Squared Error (MSE), 
+                 Mean Absolute Error (MAE), and Root Mean Squared Error (RMSE) 
+                 in both scaled (relative) and inverse-scaled (physical MPa) spaces.
+"""
+
 import torch
 import numpy as np
 

@@ -1,4 +1,10 @@
-
+"""
+EP-Neural-Nets: LaTeX and String Formatting Utilities
+This module provides helper functions to convert dataset names, input types, 
+and evaluation metrics into LaTeX mathematical formatting. This ensures that 
+figure labels and generated tables in plots match the exact notation used 
+in the paper.
+"""
 
 MAT_MAP = {
             'isotropic-linear': r'm_1',
@@ -48,7 +54,7 @@ def eval_metric_latex(
     measure = 'NMSE' if err_measure == 'MSE_rel' else err_measure
     loc_glob = 'loc' if err_type == 'local' else 'glob'
     
-    return rf'$J_{{\mathrm{{{measure}}}}}^{{\mathrm{{{loc_glob}}}}}\left({{{dataset}}}\right)$'
+    return rf'$\mathrm{{{measure}}}_{{\mathrm{{{loc_glob}}}}}\left({{{dataset}}}\right)$'
 
     
 

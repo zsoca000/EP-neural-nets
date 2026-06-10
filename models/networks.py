@@ -1,3 +1,20 @@
+"""
+EP-Neural-Nets: Core PyTorch Neural Network Architectures
+
+This module defines the raw PyTorch neural network structures (MLP and LSTM) 
+that serve as the mathematical engines for the surrogate models. It includes 
+parameterized layer construction and custom weight initialization techniques 
+(Kaiming Normal, Orthogonal, Xavier) to ensure stable and reproducible training.
+
+Key Components:
+---------------
+* MLP  - Multi-Layer Perceptron (feedforward network) with customizable depth (q) 
+         and width (p), ReLU hidden activations, and Kaiming/Xavier weight initialization.
+* LSTM - Recurrent network wrapping PyTorch's nn.LSTM layer with customizable hidden 
+         states, num layers, orthogonal recurrent weight initialization, and a fully 
+         connected output layer.
+"""
+
 import torch.nn as nn
 import torch
 
