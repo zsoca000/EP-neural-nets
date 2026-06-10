@@ -73,7 +73,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Execution Workflow
-You can run the entire workflow step-by-step using Python scripts or by executing the numbered Jupyter notebooks in the `notebooks/` directory.
+You can run the entire workflow step-by-step using Python scripts. And you can evaluate the specific tast with the numbered Jupyter notebooks in the `notebooks/` directory.
 
 #### Step 1: Generate Loading Histories and Material Responses
 Generates the stochastic and critical datasets:
