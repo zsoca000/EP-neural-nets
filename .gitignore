@@ -5,6 +5,7 @@ metrics
 metrics.zip
 data/input
 data/output
+data/states
 __pycache__/
 **/__pycache__/
 *.py[codz]

@@ -23,7 +23,7 @@ DATA_DIR = ROOT_DIR / 'data'
 
 INPUT_DIR = DATA_DIR / "input"
 OUTPUT_DIR = DATA_DIR / "output"
-
+STATES_DIR = DATA_DIR / "states"
 
 def task0(): # Generate input signals
     
@@ -84,27 +84,49 @@ def task0(): # Generate input signals
     # Calculate responses for all materials and all input sets
     for mat_name, mat in materials.items():
         for dir in [train_dir, eval_dir]:
+            
+            state_folder = STATES_DIR / mat_name / dir.name
+            out_folder = OUTPUT_DIR / mat_name / dir.name
+
+            state_folder.mkdir(parents=True, exist_ok=True)
+            out_folder.mkdir(parents=True, exist_ok=True)
+            
             for file in dir.iterdir():
                 inp_name = file.stem
                 log = f'Response of {mat_name} for {inp_name}'
                 
                 eps_list = np.load(file, allow_pickle=True)
 
-                sig_list = np.array([
-                    hardening(
+
+                sig_list, gamma_list, eps_p_list, alpha_list = [], [], [], []
+
+                for eps in tqdm(eps_list, desc=log):
+                    
+                    sig, gamma, eps_p, alpha = hardening(
                         eps.astype(np.float32),
                         mat['E'], mat['dalpha'], mat['Y']
-                    )[0]
-                    for eps in tqdm(eps_list, desc=log)
-                ], dtype=object)
+                    )
+                    
+                    sig_list.append(sig)
+                    gamma_list.append(gamma)
+                    eps_p_list.append(eps_p)
+                    alpha_list.append(alpha)
 
-                save_folder = OUTPUT_DIR / mat_name / dir.name
-                save_folder.mkdir(parents=True, exist_ok=True)
+
+                sig_list = np.array(sig_list, dtype=object)
+                gamma_list = np.array(gamma_list, dtype=object)
+                eps_p_list = np.array(eps_p_list, dtype=object)
+                alpha_list = np.array(alpha_list, dtype=object)
+
+                states_list = np.stack([gamma_list, eps_p_list, alpha_list], axis=-1)
 
                 np.save(
-                    save_folder / file.name,
-                    sig_list,
-                    allow_pickle=True,
+                    out_folder / file.name,
+                    sig_list, allow_pickle=True,
+                )
+                np.save(
+                    state_folder / file.name,
+                    states_list, allow_pickle=True,
                 )
 
 def data_set_names(): # Load the names of the generated input sets

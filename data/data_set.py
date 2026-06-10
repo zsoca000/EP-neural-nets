@@ -15,25 +15,35 @@ class DataSet:
         data_path = Path(data_path)
         self.input_path = data_path / 'input' / inp_type / f'{self.inp_name}.npy'
         self.output_path = data_path / 'output'  / mat_name / inp_type / f'{self.inp_name}.npy'
+        self.states_path = data_path / 'states'  / mat_name / inp_type / f'{self.inp_name}.npy'
 
     @property
     def u_list(self):
         ret = np.load(self.input_path, allow_pickle=True)
+        ret = self.data_to_tensor(ret).unsqueeze(-1)
+        return ret # (N,T,1)
+
+    @property
+    def x_list(self):
+        ret = np.load(self.states_path, allow_pickle=True)
         ret = self.data_to_tensor(ret)
-        return ret
-    
+        return ret # (N,T,3)
+
+
     @property
     def y_list(self):
         ret = np.load(self.output_path, allow_pickle=True)
-        ret = self.data_to_tensor(ret)
-        return ret
+        ret = self.data_to_tensor(ret).unsqueeze(-1)
+        return ret # (N,T,1)
+
+
 
     @staticmethod
     def data_to_tensor(x:np.array):
         return torch.tensor(
             x.astype(np.float32),
             dtype=torch.float32
-        ).unsqueeze(-1)
+        )
     
     
 

@@ -421,7 +421,7 @@ class InputsSignals:
             ax.plot(freqs[mask],np.abs(X[mask]),label=f'Sample {i+1}')
         ax.grid()
 
-    def plot_histogram(self,ax, bins_time=100, bins_value=100, vmin=None, vmax=None,cmap=None):
+    def plot_histogram(self,ax, bins_time=100, bins_value=100, vmin=None, vmax=None,cmap=None, x_range=None, y_range=None):
         n_signals, n_timepoints = self.u_list.shape
         
         times = np.arange(n_timepoints)
@@ -429,10 +429,19 @@ class InputsSignals:
         X = np.repeat(times[None, :], n_signals, axis=0).ravel()
         Y = self.u_list.ravel()
 
+
+        if y_range is None:
+            y_range = [Y.min(), Y.max()]
+        if x_range is None:
+            x_range = [X.min(), X.max()]
+
         H, xedges, yedges = np.histogram2d(
             X, Y,
             bins=[bins_time, bins_value],
+            range=[x_range, y_range]
         )
+
+        
 
         H = H.T  # value bins on vertical axis
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]

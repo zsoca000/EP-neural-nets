@@ -4,7 +4,6 @@ from pathlib import Path
 from train import Trainer
 from models.models import SeqMLP, SeqLSTM
 from models.utils import ErrorMetrics
-from data.materials import load_responses
 from data.data_set import DataSet
 
 

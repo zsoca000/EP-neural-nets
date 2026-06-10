@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 
 from models.networks import LSTM, MLP
 from models.utils import MinMaxScaler, ErrorMetrics
@@ -186,7 +187,6 @@ class SeqLSTM(LSTM, SeqModelBase):
                 y_pred = torch.cat([y_pred,y_next],dim=1) # (S, k+i, Fy)
         
         return y_pred
-    
 
 
 def get_model(k,p,q,mode,network_name,seed=42) -> SeqMLP | SeqMLP:
@@ -198,9 +198,7 @@ def get_model(k,p,q,mode,network_name,seed=42) -> SeqMLP | SeqMLP:
     elif network_name == 'LSTM':
         return SeqLSTM(k,p,q,incr,seed)
 
-
-
-
+    
 
 
 

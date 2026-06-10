@@ -3,7 +3,10 @@ import torch
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, output_size, p, q, seed=42, **kwargs):
+    def __init__(
+            self, input_size, output_size, 
+            p, q, final_activation=None, seed=42, **kwargs
+        ):
         super().__init__(**kwargs)
         self.p, self.q = p,q
         self.seed = seed
@@ -15,18 +18,29 @@ class MLP(nn.Module):
         self.hidden_layers.append(nn.Linear(p, output_size))
         self.ReLU = nn.ReLU()
         
+        self.final_activation = final_activation
         
         # He initialization (for ReLU activations)
-        for layer in self.hidden_layers:
-            if isinstance(layer, nn.Linear):
-                nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
-                if layer.bias is not None:
-                    nn.init.zeros_(layer.bias)
+        self._init_weights()
+
+    def _init_weights(self):
+        for layer in self.hidden_layers[:-1]:
+            nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
+            nn.init.zeros_(layer.bias)
+        # A kimeneti réteget érdemesebb Xavier-rel indítani, ha nem ReLU követi
+        nn.init.xavier_normal_(self.hidden_layers[-1].weight)
+        nn.init.zeros_(self.hidden_layers[-1].bias)
 
     def forward(self, x):
         for layer in self.hidden_layers[:-1]:
             x = self.ReLU(layer(x))
-        return self.hidden_layers[-1](x)
+        
+        x = self.hidden_layers[-1](x)
+
+        if self.final_activation is not None:
+            x = self.final_activation(x)
+
+        return x
 
 
 class LSTM(nn.Module):

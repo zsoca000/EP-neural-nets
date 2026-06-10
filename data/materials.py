@@ -73,7 +73,7 @@ def hardening(eps,E,dalpha_F,Y_F):
         alpha[i+1] = alpha[i] + dalpha_F(alpha[i],deps_p,dλ)
         sig[i+1] = sig_trial - E*deps_p  # E *(eps[i+1] - eps_p[i+1])
     
-    return sig, alpha, Y
+    return sig, λ, eps_p, alpha
 
 # ---------------------------------------------
 # Thay can be used as a part of a DataSet calss

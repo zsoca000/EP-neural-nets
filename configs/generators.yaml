@@ -42,8 +42,8 @@ static:
   amplitude:
     n_ts: 150
     amplitude:
-      min: 0.05
-      max: 0.2
+      min: 0.2
+      max: 0.4
       n: 4
 
   cyclic:
