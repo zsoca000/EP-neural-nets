@@ -27,10 +27,10 @@ EP-neural-nets/
 │   └── utils.py             # MinMaxScaler and ErrorMetrics calculation helpers
 │
 ├── notebooks/               # Jupyter notebooks for evaluation and figure generation
-│   ├── 01_data_generation_and_visualization.ipynb
-│   ├── 02_grid_search.ipynb
-│   ├── 03_model_comparison.ipynb
-│   └── 04_prediction_visualization.ipynb
+│   ├── 00_data_visualization.ipynb
+│   ├── 01_grid_search.ipynb
+│   ├── 02_comparison.ipynb
+│   └── 03_visualize_responses.ipynb
 │
 ├── utils/                   # Non-model formatting and timing helpers
 │   ├── animations.py        # Compiles image frames into training progress videos
